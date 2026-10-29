@@ -2,16 +2,27 @@ const { addonBuilder, getRouter: sdkGetRouter } = require('stremio-addon-sdk');
 const axios = require('axios');
 
 // ============================================================================
-// 1. MANIFEST CONFIGURATION (JEBU PREDPLATNÝ - 🇨🇿 CZ/SK FREE STREAMING)
+// 1. MANIFEST CONFIGURATION (JEBU PREDPLATNÝ - v1.2.0)
 // ============================================================================
 const manifest = {
   id: 'community.jebupredplatny.czsk',
-  version: '1.0.0',
+  version: '1.2.0',
   name: 'JebuPředplatný (🇨🇿 CZ/SK Free Stream)',
   description: 'České kultovní seriály (Comeback, Boží plán, Hospoda, Okresní přebor, Most!, Vyšehrad) a české filmy zdarma bez předplatného. Přímé streamy z Prehraj.to a YouTube HD.',
-  resources: ['catalog', 'meta', 'stream'],
+  resources: [
+    'catalog',
+    {
+      name: 'meta',
+      types: ['series', 'movie'],
+      idPrefixes: ['jbp_']
+    },
+    {
+      name: 'stream',
+      types: ['series', 'movie'],
+      idPrefixes: ['jbp_', 'tt']
+    }
+  ],
   types: ['series', 'movie'],
-  idPrefixes: ['jbp_', 'tt'],
   catalogs: [
     {
       type: 'series',
@@ -33,7 +44,7 @@ const manifest = {
 };
 
 // ============================================================================
-// 2. METADATA CATALOGS (SERIES & MOVIES)
+// 2. METADATA CATALOGS (WITH VERIFIED WORKING 200-OK POSTER URLS)
 // ============================================================================
 const SERIES_METADATA = [
   {
@@ -42,13 +53,13 @@ const SERIES_METADATA = [
     name: 'Comeback',
     type: 'series',
     genres: ['Komedie', 'Sitcom'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/159/995/159995058_6da5f2.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/160/328/160328906_f16d1a.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/159/995/159995058_6da5f2.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/comeback-2421.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/comeback-2421.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/comeback-2421.jpg',
     description: 'Kultovní český sitcom televize Nova. Tomáš Pacovský (Tomi Paci), bývalá hvězda pop-music, provozuje obchod s hudebními nosiči U Dvou koček se svým bratrem Františkem (Ozzák), který je nefalšovaný metalista tělem i duší.',
     releaseInfo: '2008-2011',
     rating: '8.3',
-    searchTerms: ['Comeback', 'Comeback sitcom']
+    slug: 'comeback'
   },
   {
     id: 'jbp_bozi_plan',
@@ -56,13 +67,13 @@ const SERIES_METADATA = [
     name: 'Boží plán',
     type: 'series',
     genres: ['Komedie', 'Vztahový'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/168/985/168985114_9fbf51.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/168/985/168985120_6a203f.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/168/985/168985114_9fbf51.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/bozi-plan-36464.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/bozi-plan-36464.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/bozi-plan-36464.jpg',
     description: 'Nový český komediální seriál (2026). Příběh netradičního společného soužití kamarádů Adama, Lukáše a Hynka u dobrosrdečného řidiče tramvaje Mirka (Tomáš Jeřábek), do jejichž života vstoupí mladá nevěsta Julie.',
     releaseInfo: '2026',
     rating: '7.8',
-    searchTerms: ['Boží plán', 'Bozi plan']
+    slug: 'bozi-plan'
   },
   {
     id: 'jbp_hospoda',
@@ -70,13 +81,13 @@ const SERIES_METADATA = [
     name: 'Hospoda',
     type: 'series',
     genres: ['Komedie', 'Sitcom'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/511/158511082_ff3997.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/511/158511084_163db0.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/511/158511082_ff3997.jpg',
-    description: 'Legendární český sitcom. Hospoda U kotvy a její svérázní štamgasti – topič Babula, advokát Richtera, psychiatr Prášek, tělocvikář Jonáš a další pod dohledem přísného hospodského Jaromíra Duška a kuchaře Kachny.',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/hospoda-1335.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/hospoda-1335.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/hospoda-1335.jpg',
+    description: 'Legendární český sitcom. Hospoda U kotvy a její svérázní štamgasti – topič Babula, advokát Richtera, psychiatr Prášek, tělocvikář Jonáš a další pod dohledem hospodského Duška a kuchaře Kachny.',
     releaseInfo: '1996-1997',
     rating: '8.1',
-    searchTerms: ['Hospoda', 'Hospoda sitcom']
+    slug: 'hospoda'
   },
   {
     id: 'jbp_okresni_prebor',
@@ -84,13 +95,13 @@ const SERIES_METADATA = [
     name: 'Okresní přebor',
     type: 'series',
     genres: ['Komedie', 'Sportovní'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/443/158443553_287413.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/443/158443557_e0f10c.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/443/158443553_287413.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/okresni-prebor-3304.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/okresni-prebor-3304.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/okresni-prebor-3304.jpg',
     description: 'Slavoj Houslice a jejich boj o postup v okresním přeboru. Trenér Jirka Luňák, předseda Václav Orel, veterán Jarda Kužel a řada dalších nezapomenutelných postav venkovského fotbalu.',
     releaseInfo: '2010',
     rating: '8.6',
-    searchTerms: ['Okresní přebor', 'Okresni prebor']
+    slug: 'okresni-prebor'
   },
   {
     id: 'jbp_most',
@@ -98,13 +109,13 @@ const SERIES_METADATA = [
     name: 'Most!',
     type: 'series',
     genres: ['Komedie', 'Drama'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/163/279/163279899_b9dfc4.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/163/279/163279901_387d8d.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/163/279/163279899_b9dfc4.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/most-1555.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/most-1555.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/most-1555.jpg',
     description: 'Dycky Most! Osmidílný komediální seriál České televize od tvůrčí dvojice Jan Prušinovský a Petr Kolečko. Luďan, hospoda Severka, romský popelář Franta a bratr Dáša.',
     releaseInfo: '2019',
     rating: '8.4',
-    searchTerms: ['Most! seriál', 'Most serial']
+    slug: 'most'
   },
   {
     id: 'jbp_vysehrad',
@@ -112,13 +123,13 @@ const SERIES_METADATA = [
     name: 'Vyšehrad',
     type: 'series',
     genres: ['Komedie', 'Sportovní'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/161/447/161447087_5e4310.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/161/447/161447091_d0c0fc.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/161/447/161447087_5e4310.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/vysehrad-191.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/vysehrad-191.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/vysehrad-191.jpg',
     description: 'Julius Lavický (Lavi), fotbalový talent s velkým srdcem a ještě větším sklonem k večírkům, alkoholu a průšvihům, který z první ligy spadl až do FK Slavoj Vyšehrad.',
     releaseInfo: '2016-2017',
     rating: '8.1',
-    searchTerms: ['Vyšehrad seriál', 'Vysehrad Lavi']
+    slug: 'vysehrad'
   },
   {
     id: 'jbp_ctvrta_hvezda',
@@ -126,13 +137,13 @@ const SERIES_METADATA = [
     name: 'Čtvrtá hvězda',
     type: 'series',
     genres: ['Komedie', 'Sitcom'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/160/328/160328766_64fe1c.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/160/328/160328768_a4d0f5.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/160/328/160328766_64fe1c.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/ctvrta-hvezda-2560.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/ctvrta-hvezda-2560.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/ctvrta-hvezda-2560.jpg',
     description: 'Komediální seriál České televize a Dejvického divadla. Libeňský hotel Meteor a jeho zaměstnanci se snaží získat čtvrtou hvězdu.',
     releaseInfo: '2014',
     rating: '8.1',
-    searchTerms: ['Čtvrtá hvězda', 'Ctvrta hvezda']
+    slug: 'ctvrta-hvezda'
   },
   {
     id: 'jbp_kosmo',
@@ -140,13 +151,13 @@ const SERIES_METADATA = [
     name: 'Kosmo',
     type: 'series',
     genres: ['Komedie', 'Sci-Fi'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/161/366/161366228_d66b59.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/161/366/161366230_bbf5ec.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/161/366/161366228_d66b59.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/kosmo-4399.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/kosmo-4399.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/kosmo-4399.jpg',
     description: 'První česká vesmírná mise s lidskou posádkou na Měsíc. Satirický komediální miniseriál České televize.',
     releaseInfo: '2016',
     rating: '8.2',
-    searchTerms: ['Kosmo seriál', 'Kosmo ČT']
+    slug: 'kosmo'
   },
   {
     id: 'jbp_devadesatky',
@@ -154,13 +165,13 @@ const SERIES_METADATA = [
     name: 'Devadesátky',
     type: 'series',
     genres: ['Krimi', 'Drama'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/166/193/166193910_cb43f1.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/166/193/166193915_df623a.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/166/193/166193910_cb43f1.jpg',
-    description: 'Šestidílná kriminální série zachycující vyšetřování nejzávažnějších zločinů divokých 90. let v České republice (orlické vraždy, Jonák, Discoland Sylvie).',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/devadesatky-12020.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/devadesatky-12020.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/devadesatky-12020.jpg',
+    description: 'Šestidílná kriminální série zachycující vyšetřování nejzávažnějších zločinů divokých 90. let v České republice.',
     releaseInfo: '2022',
     rating: '8.7',
-    searchTerms: ['Devadesátky', 'Devadesatky']
+    slug: 'devadesatky'
   },
   {
     id: 'jbp_chalupari',
@@ -168,13 +179,13 @@ const SERIES_METADATA = [
     name: 'Chalupáři',
     type: 'series',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/511/158511252_a13917.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/511/158511255_ea3810.jpg',
-    logo: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/511/158511252_a13917.jpg',
+    poster: 'https://www.serialzone.cz/obrazky/plakaty/chalupari-3132.jpg',
+    background: 'https://www.serialzone.cz/obrazky/plakaty/chalupari-3132.jpg',
+    logo: 'https://www.serialzone.cz/obrazky/plakaty/chalupari-3132.jpg',
     description: 'Kultovní seriál o soužití pražského důchodce Evžena Humla a vesnického kutila Bohouše Císaře ve vesničce Třešňová.',
     releaseInfo: '1975',
     rating: '8.0',
-    searchTerms: ['Chalupáři', 'Chalupari']
+    slug: 'chalupari'
   }
 ];
 
@@ -185,12 +196,12 @@ const MOVIES_METADATA = [
     name: 'Pelíšky',
     type: 'movie',
     genres: ['Komedie', 'Drama'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115684_e2c140.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115686_7c093a.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0201844/img',
+    background: 'https://images.metahub.space/background/medium/tt0201844/img',
     description: 'Kultovní česká hořká komedie Jana Hřebejka z konce šedesátých let. Rodiny Šebků a Krausů, nerozbitné plastové lžičky a legendární hlášky.',
     releaseInfo: '1999',
     rating: '9.1',
-    searchTerms: ['Pelíšky 1999', 'Pelisky']
+    slug: 'pelisky'
   },
   {
     id: 'jbp_samotari',
@@ -198,12 +209,12 @@ const MOVIES_METADATA = [
     name: 'Samotáři',
     type: 'movie',
     genres: ['Komedie', 'Drama'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/116/158116518_bf8876.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/116/158116520_19ff5a.jpg',
-    description: 'Generační komedie Davida Ondříčka a Petra Zelenky o skupině mladých lidí v Praze na přelomu tisíciletí. Jakub, Hanka, Petr a nezapomenutelné scény s marihuanou.',
+    poster: 'https://images.metahub.space/poster/medium/tt0245429/img',
+    background: 'https://images.metahub.space/background/medium/tt0245429/img',
+    description: 'Generační komedie Davida Ondříčka a Petra Zelenky o skupině mladých lidí v Praze na přelomu tisíciletí. Jakub, Hanka, Petr a nezapomenutelné scény.',
     releaseInfo: '2000',
     rating: '8.4',
-    searchTerms: ['Samotáři', 'Samotari film']
+    slug: 'samotari'
   },
   {
     id: 'jbp_dedictvi',
@@ -211,12 +222,12 @@ const MOVIES_METADATA = [
     name: 'Dědictví aneb Kurvahošigutntag',
     type: 'movie',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115714_2e35eb.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115716_c584cb.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0106675/img',
+    background: 'https://images.metahub.space/background/medium/tt0106675/img',
     description: 'Věra Chytilová a Bolek Polívka v nezapomenutelné komedii o rázovitém vesnickém chlapíkovi Bohušovi, který nečekaně zdědí obrovský majetek.',
     releaseInfo: '1992',
     rating: '8.4',
-    searchTerms: ['Dědictví aneb Kurvahošigutntag', 'Dedictvi kurvahosigutntag']
+    slug: 'dedictvi-aneb-kurvahosigutntag'
   },
   {
     id: 'jbp_steboumebavisvet',
@@ -224,25 +235,12 @@ const MOVIES_METADATA = [
     name: 'S tebou mě baví svět',
     type: 'movie',
     genres: ['Komedie', 'Rodinný'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115682_1d5964.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115685_321175.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0084620/img',
+    background: 'https://images.metahub.space/background/medium/tt0084620/img',
     description: 'Komedie století režisérky Marie Poledňákové. Každoroční pánská jízda tří kamarádů v Beskydech se změní v mateřskou školu v přírodě.',
     releaseInfo: '1982',
     rating: '8.2',
-    searchTerms: ['S tebou mě baví svět', 'S tebou me bavi svet']
-  },
-  {
-    id: 'jbp_vratnelahve',
-    imdb_id: 'tt0804549',
-    name: 'Vratné lahve',
-    type: 'movie',
-    genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/116/158116548_b621fe.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/116/158116550_1922df.jpg',
-    description: 'Učitel v důchodu Josef Tkaloun odmítá pasivní stáří a přijme místo brigádníka ve výkupu lahví v pražském supermarketu.',
-    releaseInfo: '2007',
-    rating: '7.8',
-    searchTerms: ['Vratné lahve', 'Vratne lahve film']
+    slug: 's-tebou-me-bavi-svet'
   },
   {
     id: 'jbp_nasamoteulesa',
@@ -250,12 +248,12 @@ const MOVIES_METADATA = [
     name: 'Na samotě u lesa',
     type: 'movie',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115788_fa720e.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115790_13bdf2.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0074949/img',
+    background: 'https://images.metahub.space/background/medium/tt0074949/img',
     description: 'Manželé Lavičkovi touží po chalupě a dohodnou se s dědou Komárkem, že od něj koupí malebnou roubenku, až na podzim zaseje.',
     releaseInfo: '1976',
     rating: '8.4',
-    searchTerms: ['Na samotě u lesa', 'Na samote u lesa']
+    slug: 'na-samote-u-lesa'
   },
   {
     id: 'jbp_slunceseno1',
@@ -263,12 +261,12 @@ const MOVIES_METADATA = [
     name: 'Slunce, seno, jahody',
     type: 'movie',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115796_0b2632.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115798_18ba03.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0088143/img',
+    background: 'https://images.metahub.space/background/medium/tt0088143/img',
     description: 'Zdeněk Troška a jeho jihočeská vesnice Hoštice. Student Šimon Plánička přichází se svou teorií zvyšování dojivosti krav pomocí hudby.',
     releaseInfo: '1984',
     rating: '7.9',
-    searchTerms: ['Slunce seno jahody', 'Slunce, seno, jahody']
+    slug: 'slunce-seno-jahody'
   },
   {
     id: 'jbp_slunceseno2',
@@ -276,12 +274,12 @@ const MOVIES_METADATA = [
     name: 'Slunce, seno a pár facek',
     type: 'movie',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115802_8cb721.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115804_5b045e.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0098348/img',
+    background: 'https://images.metahub.space/background/medium/tt0098348/img',
     description: 'Přípravy svatby Blaženy a Vency v Hošticích přeroste ve vesnickou válku dvou rodin, plnou facek a drbů.',
     releaseInfo: '1989',
     rating: '7.8',
-    searchTerms: ['Slunce seno a par facek', 'Slunce, seno a pár facek']
+    slug: 'slunce-seno-a-par-facek'
   },
   {
     id: 'jbp_vesnicko',
@@ -289,12 +287,12 @@ const MOVIES_METADATA = [
     name: 'Vesničko má středisková',
     type: 'movie',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115812_828331.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115814_1ff732.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0089851/img',
+    background: 'https://images.metahub.space/background/medium/tt0089851/img',
     description: 'Jiří Menzel a Zdeněk Svěrák v nominaci na Oscara. Mentálně zaostalý Otík a řidič náklaďáku pan Pávek v malebné středočeské vesnici Křečovice.',
     releaseInfo: '1985',
     rating: '8.8',
-    searchTerms: ['Vesničko má středisková', 'Vesnicko ma strediskova']
+    slug: 'vesnicko-ma-strediskova'
   },
   {
     id: 'jbp_cernibaroni',
@@ -302,17 +300,43 @@ const MOVIES_METADATA = [
     name: 'Černí baroni',
     type: 'movie',
     genres: ['Komedie'],
-    poster: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/115/158115838_0f2452.jpg',
-    background: 'https://image.pmgstatic.com/cache/resized/w1400/files/images/film/photos/158/115/158115840_9c56aa.jpg',
+    poster: 'https://images.metahub.space/poster/medium/tt0103957/img',
+    background: 'https://images.metahub.space/background/medium/tt0103957/img',
     description: 'Kultovní komedie podle knihy Miloslava Švandrlíka o pétépácích na zámku Zelená Hora. Major Terazky a jeho legendární otázky.',
     releaseInfo: '1992',
     rating: '8.2',
-    searchTerms: ['Černí baroni', 'Cerni baroni']
+    slug: 'cerni-baroni'
+  },
+  {
+    id: 'jbp_kolja',
+    imdb_id: 'tt0116790',
+    name: 'Kolja',
+    type: 'movie',
+    genres: ['Komedie', 'Drama'],
+    poster: 'https://images.metahub.space/poster/medium/tt0116790/img',
+    background: 'https://images.metahub.space/background/medium/tt0116790/img',
+    description: 'Oscarový film Jana a Zdeňka Svěrákových o stárnoucím violoncellistovi Loukovi a malém ruském chlapci Koljovi na pozadí roku 1989.',
+    releaseInfo: '1996',
+    rating: '8.6',
+    slug: 'kolja'
+  },
+  {
+    id: 'jbp_marecku',
+    imdb_id: 'tt0074868',
+    name: 'Marečku, podejte mi pero!',
+    type: 'movie',
+    genres: ['Komedie'],
+    poster: 'https://images.metahub.space/poster/medium/tt0074868/img',
+    background: 'https://images.metahub.space/background/medium/tt0074868/img',
+    description: 'Mistr v továrně Jiří Kroupa musí usednout do večerní průmyslovky, aby si zvýšil kvalifikaci, a zasedne do stejných lavic jako jeho dospívající syn.',
+    releaseInfo: '1976',
+    rating: '8.8',
+    slug: 'marecku-podejte-mi-pero'
   }
 ];
 
 // ============================================================================
-// 3. EPISODES DATABASE (COMEBACK, BOŽÍ PLÁN, HOSPODA, OKRESNÍ PŘEBOR, MOST)
+// 3. EPISODES DATABASE (DETAILED CZECH EPISODE TITLES)
 // ============================================================================
 const COMEBACK_EPISODES = [
   // Season 1
@@ -404,13 +428,13 @@ const MOST_EPISODES = [
 ];
 
 const OKRESNI_PREBOR_EPISODES = [
-  { s: 1, e: 1, title: 'Pohřeb', overview: 'Úmrtí legendárního trenéra a boj o jeho urnu na hřišti Slavoje Houslice.' },
+  { s: 1, e: 1, title: 'Pohřeb', overview: 'Úmrtí trenéra a boj o jeho urnu na hřišti Slavoje Houslice.' },
   { s: 1, e: 2, title: 'Sponzor', overview: 'Klub shání peníze na novou sezónu od místního podnikatele.' },
   { s: 1, e: 3, title: 'Láska', overview: 'Jarda Kužel řeší milostné pletky na úkor tréninku.' },
   { s: 1, e: 4, title: 'Návrat', overview: 'Václav Orel přivádí posilu, která rozdělí kabinu.' },
   { s: 1, e: 5, title: 'Sudí', overview: 'Zápas pískají rozhodčí s velmi specifickým citem pro fauly.' },
   { s: 1, e: 6, title: 'Jaro', overview: 'Začátek jarní části a Luňákova taktika s betonem v obraně.' },
-  { s: 1, e: 7, title: 'Kopačky', overview: 'Ztráta štastných kopaček střelce Slavoje Houslice.' },
+  { s: 1, e: 7, title: 'Kopačky', overview: 'Ztráta šťastných kopaček střelce Slavoje Houslice.' },
   { s: 1, e: 8, title: 'Derby', overview: 'Největší zápas roku proti Kostomlatům!' }
 ];
 
@@ -421,84 +445,32 @@ const VYSEHRAD_EPISODES = Array.from({ length: 10 }, (_, i) => ({
   overview: `Lavi a jeho neuvěřitelné fotbalové i mimofotbalové eskapády v FK Slavoj Vyšehrad (Díl ${i + 1}).`
 }));
 
-function getEpisodesForShow(showId) {
-  if (showId === 'jbp_comeback' || showId === 'tt1330086') {
-    return COMEBACK_EPISODES.map(ep => ({
-      id: `${showId}:${ep.s}:${ep.e}`,
-      title: `${ep.s}x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      name: `${ep.s}x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      season: ep.s,
-      number: ep.e,
-      episode: ep.e,
-      overview: ep.overview,
-      thumbnail: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/159/995/159995058_6da5f2.jpg'
-    }));
-  }
-  if (showId === 'jbp_bozi_plan' || showId === 'tt32876544') {
-    return BOZI_PLAN_EPISODES.map(ep => ({
-      id: `${showId}:${ep.s}:${ep.e}`,
-      title: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      name: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      season: ep.s,
-      number: ep.e,
-      episode: ep.e,
-      overview: ep.overview,
-      thumbnail: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/168/985/168985114_9fbf51.jpg'
-    }));
-  }
-  if (showId === 'jbp_hospoda' || showId === 'tt0178135') {
-    return HOSPODA_EPISODES.map(ep => ({
-      id: `${showId}:${ep.s}:${ep.e}`,
-      title: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      name: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      season: ep.s,
-      number: ep.e,
-      episode: ep.e,
-      overview: ep.overview,
-      thumbnail: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/511/158511082_ff3997.jpg'
-    }));
-  }
-  if (showId === 'jbp_most' || showId === 'tt9205566') {
-    return MOST_EPISODES.map(ep => ({
-      id: `${showId}:${ep.s}:${ep.e}`,
-      title: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      name: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      season: ep.s,
-      number: ep.e,
-      episode: ep.e,
-      overview: ep.overview,
-      thumbnail: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/163/279/163279899_b9dfc4.jpg'
-    }));
-  }
-  if (showId === 'jbp_okresni_prebor' || showId === 'tt1739958') {
-    return OKRESNI_PREBOR_EPISODES.map(ep => ({
-      id: `${showId}:${ep.s}:${ep.e}`,
-      title: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      name: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      season: ep.s,
-      number: ep.e,
-      episode: ep.e,
-      overview: ep.overview,
-      thumbnail: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/158/443/158443553_287413.jpg'
-    }));
-  }
-  if (showId === 'jbp_vysehrad' || showId === 'tt6186834') {
-    return VYSEHRAD_EPISODES.map(ep => ({
-      id: `${showId}:${ep.s}:${ep.e}`,
-      title: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      name: `1x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
-      season: ep.s,
-      number: ep.e,
-      episode: ep.e,
-      overview: ep.overview,
-      thumbnail: 'https://image.pmgstatic.com/cache/resized/w663/files/images/film/posters/161/447/161447087_5e4310.jpg'
-    }));
-  }
+function getRawEpisodes(baseId) {
+  if (baseId.includes('comeback')) return COMEBACK_EPISODES;
+  if (baseId.includes('bozi_plan')) return BOZI_PLAN_EPISODES;
+  if (baseId.includes('hospoda')) return HOSPODA_EPISODES;
+  if (baseId.includes('most')) return MOST_EPISODES;
+  if (baseId.includes('okresni_prebor')) return OKRESNI_PREBOR_EPISODES;
+  if (baseId.includes('vysehrad')) return VYSEHRAD_EPISODES;
   return [];
 }
 
+function buildEpisodesForId(requestedId, show) {
+  const raw = getRawEpisodes(show.id);
+  return raw.map(ep => ({
+    id: `${requestedId}:${ep.s}:${ep.e}`,
+    title: `${ep.s}x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
+    name: `${ep.s}x${ep.e < 10 ? '0' + ep.e : ep.e} - ${ep.title}`,
+    season: ep.s,
+    number: ep.e,
+    episode: ep.e,
+    overview: ep.overview,
+    thumbnail: show.poster
+  }));
+}
+
 // ============================================================================
-// 4. STREAM EXTRACTION ENGINES (PREHRAJ.TO DIRECT + YOUTUBE HD)
+// 4. STREAM EXTRACTION ENGINES (PREHRAJ.TO + CLEAN YOUTUBE HD)
 // ============================================================================
 const STREAM_CACHE = new Map();
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -507,86 +479,107 @@ const PREHRAJ_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Cookie': 'AC=C',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'X-Requested-With': 'XMLHttpRequest',
   'Referer': 'https://prehrajto.cz/'
 };
 
 /**
- * Scrapes Prehraj.to for direct MP4 video streams
+ * Scrapes Prehraj.to using slug format (fast & avoids 429 rate limit)
  */
-async function scrapePrehraj(query) {
+async function scrapePrehrajSlug(slug) {
   try {
-    const searchUrl = `https://prehrajto.cz/hledej/${encodeURIComponent(query)}`;
+    const searchUrl = `https://prehrajto.cz/hledej/${slug}`;
     const searchResp = await axios.get(searchUrl, {
       headers: PREHRAJ_HEADERS,
-      timeout: 7000
+      timeout: 3800
     });
 
     const html = searchResp.data;
     if (typeof html !== 'string') return [];
 
-    // Find links in format: href="/slug/hex16"
     const linkMatches = [...html.matchAll(/href="(\/[a-z0-9\-]+\/([a-f0-9]{16}))"/gi)];
     if (!linkMatches || linkMatches.length === 0) return [];
 
-    // Take up to 2 distinct video candidate paths
-    const candidatePaths = [...new Set(linkMatches.map(m => m[1]))].slice(0, 2);
-    const streams = [];
+    // Take top candidate
+    const candidatePath = linkMatches[0][1];
+    const detailUrl = `https://prehrajto.cz${candidatePath}`;
 
-    for (const path of candidatePaths) {
-      try {
-        const detailUrl = `https://prehrajto.cz${path}`;
-        const detailResp = await axios.get(detailUrl, {
-          headers: PREHRAJ_HEADERS,
-          timeout: 6000
-        });
+    const detailResp = await axios.get(detailUrl, {
+      headers: PREHRAJ_HEADERS,
+      timeout: 3500
+    });
 
-        const detailHtml = detailResp.data;
-        if (typeof detailHtml !== 'string') continue;
+    const detailHtml = detailResp.data;
+    if (typeof detailHtml !== 'string') return [];
 
-        // Extract direct video URL from `sources = [{ file: "...", label: '720p' }]`
-        const sourcesMatch = detailHtml.match(/sources\s*=\s*\[([\s\S]*?)\];/);
-        let videoFile = '';
-        let quality = '720p HD';
+    // Extract direct video URL from sources = [{ file: "..." }]
+    let videoFile = '';
+    let quality = '720p HD';
 
-        if (sourcesMatch) {
-          const fileMatch = sourcesMatch[1].match(/file:\s*"([^"]+)"/);
-          if (fileMatch) videoFile = fileMatch[1];
-          const labelMatch = sourcesMatch[1].match(/label:\s*['"]([^'"]+)['"]/);
-          if (labelMatch) quality = labelMatch[1];
-        }
-
-        // Fallback: look for direct .mp4 or .m3u8 CDN links
-        if (!videoFile) {
-          const directMatch = detailHtml.match(/(https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)[^\s"'<>]*)/i);
-          if (directMatch) videoFile = directMatch[1];
-        }
-
-        if (videoFile) {
-          // Extract page title or slug for friendly name
-          const slugTitle = path.split('/')[1]?.replace(/-/g, ' ') || query;
-          streams.push({
-            name: `🇨🇿 Prehraj.to [${quality}]`,
-            title: `[PREHRAJ.TO] ${slugTitle.substring(0, 50)}\n⚡ Přímý MP4 stream (${quality}) • Bez sekání`,
-            url: videoFile,
-            behaviorHints: { notWebReady: false }
-          });
-        }
-      } catch (err) {
-        // Continue to next candidate
-      }
+    const sourcesMatch = detailHtml.match(/sources\s*=\s*\[([\s\S]*?)\];/);
+    if (sourcesMatch) {
+      const fileMatch = sourcesMatch[1].match(/file:\s*"([^"]+)"/);
+      if (fileMatch) videoFile = fileMatch[1];
+      const labelMatch = sourcesMatch[1].match(/label:\s*['"]([^'"]+)['"]/);
+      if (labelMatch) quality = labelMatch[1];
     }
 
-    return streams;
+    if (!videoFile) {
+      const directMatch = detailHtml.match(/(https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)[^\s"'<>]*)/i);
+      if (directMatch) videoFile = directMatch[1];
+    }
+
+    if (videoFile) {
+      const slugTitle = candidatePath.split('/')[1]?.replace(/-/g, ' ') || slug;
+      return [{
+        name: `🇨🇿 Prehraj.to [${quality}]`,
+        title: `[PREHRAJ.TO] ${slugTitle.substring(0, 50)}\n⚡ Přímý MP4 stream (${quality}) • Bez sekání`,
+        url: videoFile,
+        behaviorHints: { notWebReady: false }
+      }];
+    }
+    return [];
   } catch (err) {
     return [];
   }
 }
 
 /**
- * Searches YouTube for verified full episodes and films
+ * Validates whether a YouTube result is actual content, NOT spam or fan compilation
  */
-async function searchYouTube(query, isMovie = false) {
+function isCleanYouTubeVideo(title, durationStr, showName, isMovie = false) {
+  const t = title.toLowerCase();
+  
+  // Strict anti-spam: reject fan compilations, clips, and spam clickbait
+  const spamWords = ['kompilace', 'sestřih', 'best of', 'policejní', '2026', 'epizody 1~', 'epizody 20~', 'scény', 'trailer', 'ukázka', 'fakta'];
+  if (spamWords.some(w => t.includes(w))) return false;
+
+  const parts = durationStr.split(':').map(Number);
+  if (parts.some(isNaN)) return false;
+
+  let totalMin = 0;
+  if (parts.length === 2) totalMin = parts[0];
+  else if (parts.length === 3) totalMin = parts[0] * 60 + parts[1];
+
+  if (isMovie) {
+    // Film: between 50 and 190 minutes
+    if (totalMin < 50 || totalMin > 190) return false;
+  } else {
+    // Sitcom / series episode: between 18 and 50 minutes (strictly reject 1.5h - 2h fake compilations)
+    if (totalMin < 18 || totalMin > 50) return false;
+  }
+
+  // Title must contain key words from show name
+  const cleanShow = showName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanTitle = t.replace(/[^a-z0-9]/g, '');
+  if (!cleanTitle.includes(cleanShow.substring(0, 5))) return false;
+
+  return true;
+}
+
+/**
+ * Searches YouTube with strict anti-spam filters
+ */
+async function searchCleanYouTube(query, showName, isMovie = false) {
   try {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
     const res = await axios.get(url, {
@@ -594,7 +587,7 @@ async function searchYouTube(query, isMovie = false) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept-Language': 'cs-CZ,cs;q=0.9,en;q=0.8'
       },
-      timeout: 7000
+      timeout: 3500
     });
 
     const html = res.data;
@@ -616,25 +609,16 @@ async function searchYouTube(query, isMovie = false) {
         const title = vr.title?.runs?.map(r => r.text).join('') || vr.title?.simpleText || '';
         const lengthText = vr.lengthText?.simpleText || '';
 
-        // Sitcom filter: at least 15 min; Film filter: at least 50 min
-        let validDuration = false;
-        const parts = lengthText.split(':').map(Number);
-        if (isMovie) {
-          if (parts.length >= 3 || (parts.length === 2 && parts[0] >= 50)) validDuration = true;
-        } else {
-          if (parts.length >= 3 || (parts.length === 2 && parts[0] >= 15)) validDuration = true;
-        }
-
-        if (validDuration) {
+        if (isCleanYouTubeVideo(title, lengthText, showName, isMovie)) {
           streams.push({
             name: `▶ YouTube HD [${lengthText}]`,
             title: `[YOUTUBE] ${title}\nSledovat na YouTube (${lengthText}) • 1080p`,
             ytId: vr.videoId
           });
-          if (streams.length >= 3) break;
+          if (streams.length >= 2) break;
         }
       }
-      if (streams.length >= 3) break;
+      if (streams.length >= 2) break;
     }
 
     return streams;
@@ -655,10 +639,7 @@ builder.defineCatalogHandler(({ type, id, extra }) => {
   if (type === 'series') {
     let items = SERIES_METADATA;
     if (search) {
-      items = items.filter(s =>
-        s.name.toLowerCase().includes(search) ||
-        s.searchTerms.some(t => t.toLowerCase().includes(search))
-      );
+      items = items.filter(s => s.name.toLowerCase().includes(search) || s.slug.includes(search));
     }
     return Promise.resolve({
       metas: items.map(s => ({
@@ -678,10 +659,7 @@ builder.defineCatalogHandler(({ type, id, extra }) => {
   if (type === 'movie') {
     let items = MOVIES_METADATA;
     if (search) {
-      items = items.filter(m =>
-        m.name.toLowerCase().includes(search) ||
-        m.searchTerms.some(t => t.toLowerCase().includes(search))
-      );
+      items = items.filter(m => m.name.toLowerCase().includes(search) || m.slug.includes(search));
     }
     return Promise.resolve({
       metas: items.map(m => ({
@@ -701,16 +679,16 @@ builder.defineCatalogHandler(({ type, id, extra }) => {
   return Promise.resolve({ metas: [] });
 });
 
-// Meta Handler
+// Meta Handler (Guarantees returned meta.id matches requested id exactly!)
 builder.defineMetaHandler(({ type, id }) => {
   // 1. Series meta lookup
   if (type === 'series') {
     const show = SERIES_METADATA.find(s => s.id === id || s.imdb_id === id);
     if (show) {
-      const episodes = getEpisodesForShow(show.id);
+      const episodes = buildEpisodesForId(id, show);
       return Promise.resolve({
         meta: {
-          id: show.id,
+          id: id,
           type: 'series',
           name: show.name,
           poster: show.poster,
@@ -732,7 +710,7 @@ builder.defineMetaHandler(({ type, id }) => {
     if (movie) {
       return Promise.resolve({
         meta: {
-          id: movie.id,
+          id: id,
           type: 'movie',
           name: movie.name,
           poster: movie.poster,
@@ -749,7 +727,7 @@ builder.defineMetaHandler(({ type, id }) => {
   return Promise.resolve({ meta: null });
 });
 
-// Stream Handler
+// Stream Handler (Strict matching, never defaults to Comeback for unknown shows)
 builder.defineStreamHandler(async ({ type, id }) => {
   // Check in-memory cache
   const cached = STREAM_CACHE.get(id);
@@ -767,54 +745,47 @@ builder.defineStreamHandler(async ({ type, id }) => {
       const seasonNum = parseInt(parts[1], 10);
       const epNum = parseInt(parts[2], 10);
 
+      // Find matched show in our supported catalog
       const show = SERIES_METADATA.find(s => s.id === showId || s.imdb_id === showId);
-      const showTitle = show ? show.name : (showId.startsWith('tt') ? 'Comeback' : showId);
+      if (!show) {
+        // Unknown external series (e.g. Breaking Bad) -> DO NOT hijack!
+        return { streams: [] };
+      }
 
-      // Look up specific episode title
-      const episodes = getEpisodesForShow(show?.id || showId);
-      const ep = episodes.find(e => e.season === seasonNum && e.number === epNum);
-      const epTitle = ep ? ep.title.replace(/^[0-9]+x[0-9]+\s*-\s*/, '') : '';
+      const showSlug = show.slug;
+      const showTitle = show.name;
 
-      // Construct multiple search variants for high Prehraj hit rate
-      const queries = [
-        `${showTitle} ${seasonNum}x${epNum < 10 ? '0' + epNum : epNum}`,
-        `${showTitle} ${epNum}.díl`,
-        `${showTitle} S0${seasonNum}E0${epNum}`,
-        epTitle ? `${showTitle} ${epTitle}` : `${showTitle} ${epNum}`
-      ];
+      // Smart slugs for Prehraj (e.g. comeback-1-dil, hospoda-01)
+      const primarySlug = `${showSlug}-${epNum}-dil`;
+      const secondarySlug = `${showSlug}-${epNum < 10 ? '0' + epNum : epNum}`;
 
-      // Execute Prehraj and YouTube searches in parallel
-      const [prehrajResults, ytResults] = await Promise.all([
+      // Parallel execution with tight timeouts
+      const [prehrajRes, ytRes] = await Promise.all([
         (async () => {
-          for (const q of queries) {
-            const res = await scrapePrehraj(q);
-            if (res.length > 0) return res;
-          }
-          return [];
+          const res1 = await scrapePrehrajSlug(primarySlug);
+          if (res1.length > 0) return res1;
+          return scrapePrehrajSlug(secondarySlug);
         })(),
-        searchYouTube(`${showTitle} ${seasonNum}x${epNum} celý díl`, false)
+        searchCleanYouTube(`${showTitle} ${epNum}. díl`, showTitle, false)
       ]);
 
-      streams.push(...prehrajResults);
-      streams.push(...ytResults);
+      streams.push(...prehrajRes);
+      streams.push(...ytRes);
     }
     // 2. Movie Stream (format: movieId)
     else if (type === 'movie') {
       const movie = MOVIES_METADATA.find(m => m.id === id || m.imdb_id === id);
-      const movieTitle = movie ? movie.name : id;
-      const releaseYear = movie ? movie.releaseInfo : '';
+      if (!movie) {
+        return { streams: [] };
+      }
 
-      const [prehrajResults, ytResults] = await Promise.all([
-        (async () => {
-          const res1 = await scrapePrehraj(`${movieTitle} ${releaseYear}`);
-          if (res1.length > 0) return res1;
-          return scrapePrehraj(movieTitle);
-        })(),
-        searchYouTube(`${movieTitle} celý film`, true)
+      const [prehrajRes, ytRes] = await Promise.all([
+        scrapePrehrajSlug(movie.slug),
+        searchCleanYouTube(`${movie.name} celý film`, movie.name, true)
       ]);
 
-      streams.push(...prehrajResults);
-      streams.push(...ytResults);
+      streams.push(...prehrajRes);
+      streams.push(...ytRes);
     }
 
     // Cache results
@@ -825,7 +796,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     return { streams };
   } catch (err) {
-    console.warn(`[JBP StreamResolver] Error resolving ${id}:`, err.message);
     return { streams: [] };
   }
 });
@@ -840,11 +810,13 @@ if (proto && typeof proto.createRouter !== 'function') {
     return sdkGetRouter(this);
   };
 }
+if (typeof addonInterface.createRouter !== 'function') {
+  addonInterface.createRouter = () => sdkGetRouter(addonInterface);
+}
 
-const getRouter = sdkGetRouter(addonInterface);
+const getRouter = builder.getInterface().createRouter();
 
 module.exports = (req, res) => {
-  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -855,16 +827,15 @@ module.exports = (req, res) => {
     return;
   }
 
-  // Clean URL path
   const url = (req.url || '').split('?')[0];
 
-  // Landing Page & Installation Dashboard
-  if (url === '/' || url === '') {
+  if (url === '/' || url === '' || url === '/index.html') {
     const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
     const proto = req.headers['x-forwarded-proto'] || 'https';
     const manifestUrl = `${proto}://${host}/manifest.json`;
     const stremioUrl = `stremio://${host}/manifest.json`;
 
+    res.statusCode = 200;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end(`<!DOCTYPE html>
 <html lang="cs">
@@ -993,7 +964,7 @@ module.exports = (req, res) => {
 </head>
 <body>
   <div class="card">
-    <div class="badge">🇨🇿 100% Free • Žádné předplatné</div>
+    <div class="badge">🇨🇿 v1.2.0 • 100% Free • Žádné předplatné</div>
     <h1>Jebu<span>Předplatný</span></h1>
     <p class="lead">Kultovní české seriály (<strong>Comeback</strong>, <strong>Boží plán</strong>, <strong>Hospoda</strong>, <strong>Most!</strong>, <strong>Okresní přebor</strong>) a filmy přímo ve Stremiu bez nutnosti placeného Debridu.</p>
     
@@ -1007,11 +978,11 @@ module.exports = (req, res) => {
     <div class="features">
       <h3>✨ Co addon nabízí:</h3>
       <ul>
-        <li><strong>🇨🇿 Prehraj.to:</strong> Přímé video MP4 streamy v 720p HD (bez zasekávání a bez účtu).</li>
-        <li><strong>▶ YouTube HD:</strong> Ověřené celé epizody a filmy v 1080p.</li>
+        <li><strong>🇨🇿 Prehraj.to:</strong> Přímé video MP4 streamy v 720p HD bez zasekávání.</li>
+        <li><strong>▶ YouTube HD:</strong> Ověřené české epizody a filmy s filtrem proti kompilacím.</li>
         <li><strong>Kompletní Comeback:</strong> Všech 51 dílů s názvy, popisy a přebaly.</li>
         <li><strong>Kultovní české klasiky:</strong> Pelíšky, Samotáři, Dědictví, Hospoda, ČT klenoty.</li>
-        <li><strong>Univerzální kompatibilita:</strong> PC, Android TV, Google TV, Samsung Smart TV i mobily.</li>
+        <li><strong>Univerzální kompatibilita:</strong> PC, Android TV, Google TV, Samsung TV i mobily.</li>
       </ul>
     </div>
 
@@ -1024,7 +995,6 @@ module.exports = (req, res) => {
     return;
   }
 
-  // Handle Stremio API calls
   getRouter(req, res, () => {
     res.statusCode = 404;
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
