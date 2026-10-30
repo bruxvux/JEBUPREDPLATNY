@@ -1,32 +1,46 @@
-# 🇨🇿 JebuPředplatný – Stremio addon (CZ/SK zdarma)
+# 🇨🇿 JebuPředplatný v3.0.0 – Univerzální CZ/SK Stremio Addon
 
-Stremio addon pro český a slovenský obsah bez placeného předplatného. Streamy hledá na **Prehraj.to** a **Hellspy** (přímé MP4, bez přihlášení), případně jako zálohu na YouTube.
+Český a slovenský streamovací addon pro **Stremio** zcela zdarma bez jakéhokoliv předplatného (bez Webshare VIP, bez Kra.sk, bez Real-Debrid).
 
-## Jak funguje
+---
 
-* **Metadata a epizody dodává Cinemeta** (addon nemá vlastní `meta`), takže se epizody ve Stremiu vždy správně vytvoří.
-* **Streamy fungují u každého českého/slovenského titulu**, který Cinemeta zná (sekce *Populární*, *Hledání*, *Knihovna*). Cizí seriály addon ignoruje.
-* Vlastní katalogy: 🇨🇿 České a slovenské seriály / filmy (+ vyhledávání v nich).
-* Epizody se párují přísně podle názvu a označení (`S01E02`, `1x02`, `2. díl`, název epizody), takže se nezobrazují kompilace ani jiné seriály.
-* Odkazy se získávají až při stisku přehrát (`/resolve/...` → přesměrování na MP4), takže seznam streamů je rychlý.
+## 🌟 Jak to funguje
 
-## Omezení (důležité)
+1. **Žádný omezený katalog:**
+   - Addon nemá žádný vlastní umělý katalog se 4 položkami.
+   - Využívá přímo výchozí katalog **Cinemeta ve Stremiu** – jakýkoliv český film nebo seriál, který najdete v sekci *Populární*, *Objevovat* nebo ve *Vyhledávání* Stremia (Comeback, Boží plán, Hospoda, Čtvrtá hvězda, Most!, Pelíšky, Samotáři...), má k dispozici všechny epizody, plakáty i popisy.
+2. **Vícezónový resolver streamů:**
+   - **⚡ Hellspy (1080p FHD / 720p HD MP4):** Přímé streamy konvertované do MP4, které se přehrávají přímo v interním přehrávači Stremia (např. *Hospoda*, *Čtvrtá hvězda*, *Pelíšky* atd.).
+   - **📺 Oficiální přehrávače vysílatelů:**
+     - **TV Nova / Oneplay:** Přímé spuštění pro *Comeback*, *Boží plán*, *Hospoda*, *Okresní přebor*, *Specialisté*, *Ordinace* jedním klikem.
+     - **Česká televize iVysílání:** Přímé spuštění pro *Most!*, *Čtvrtá hvězda*, *Devadesátky*, *Kukačky*, *Kosmo*, *Chalupáři*, *Rapl*, *Svět pod hlavou* atd.
+     - **TV Prima / Prima+:** Vyhledání a spuštění pro seriály Primy (*Slunečná*, *ZOO*...).
+   - **▶ YouTube HD:** Striktně filtrované celé oficiální epizody a filmy (odfiltrovány všechny nesmyslné kompilace, rozhovory a falešná videa).
+   - **🌐 Sleduj.to / Sleduj.online:** 1-klikové vyhledání streamu pro danou epizodu/film.
+3. **Cizí obsah ignoruje:**
+   - Pokud si pustíte *Breaking Bad* nebo *Inception*, addon se neplete do cesty a nechává prostor vašim ostatním torrent/debrid addonům.
 
-Dostupnost závisí na tom, co uživatelé nahráli. Pořady TV Nova (**Comeback, Boží plán**…) jsou z Prehraj.to i Hellspy pravidelně mazány kvůli autorským právům – addon je ukáže, jakmile se objeví, ale nic neumí vytvořit z ničeho. Tituly ČT a starší klasiky (Čtvrtá hvězda, Hospoda, Pelíšky…) fungují dobře.
+---
 
-## Nasazení na Vercel
+## 🚀 Instalace do Stremia
+
+1. **DŮLEŽITÉ:** Pokud jste měli nainstalovanou starší verzi doplňku (v1 nebo v2), **nejdříve ji ve Stremiu v záložce Doplňky odinstalujte** (aby Stremio vymazalo starou mezipaměť a katalog).
+2. Otevřete webovou adresu vašeho nasazeného Vercel projektu:
+   ```text
+   https://<vas-projekt>.vercel.app
+   ```
+   a klikněte na tlačítko **🚀 Nainstalovat do Stremia**.
+3. Případně zadejte adresu manifestu přímo do vyhledávacího pole Doplňků ve Stremiu:
+   ```text
+   https://<vas-projekt>.vercel.app/manifest.json
+   ```
+
+---
+
+## 💻 Lokální vývoj a testování
 
 ```powershell
-git push origin main
-```
-
-Pak na vercel.com **Add New → Project → JEBUPREDPLATNY → Deploy**. Funkce má v `vercel.json` nastaveno `maxDuration: 30`.
-
-Instalace: otevři adresu projektu a klikni na *Nainstalovat do Stremia*, nebo vlož `https://<projekt>.vercel.app/manifest.json` do Doplňků. **Starý addon ve Stremiu nejdřív odinstaluj**, aby se načetl nový manifest.
-
-## Lokální test
-
-```powershell
-npm install
+# Spuštění lokálního serveru
 node -e "require('http').createServer(require('./api/index.js')).listen(3000)"
 ```
+Manifest bude dostupný na `http://localhost:3000/manifest.json`.

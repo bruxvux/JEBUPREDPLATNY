@@ -2,68 +2,165 @@ const { addonBuilder, getRouter: sdkGetRouter } = require('stremio-addon-sdk');
 const axios = require('axios');
 
 // ============================================================================
-// 1. MANIFEST
-//    No custom "meta" resource: Stremio uses Cinemeta for metadata/episodes
-//    (we only serve catalogs + streams for real IMDb "tt" ids).
+// 1. MANIFEST CONFIGURATION (v3.0.0 - UNIVERSAL CINEMETA STREAM PROVIDER)
+//    No custom catalogs: Stremio uses Cinemeta's complete catalog for all titles.
+//    Our addon resolves streams for ANY Czech/Slovak series or movie in Stremio.
 // ============================================================================
 const manifest = {
   id: 'community.jebupredplatny.czsk',
-  version: '2.0.0',
-  name: 'JebuPředplatný (CZ/SK zdarma)',
-  description: 'České a slovenské seriály a filmy zdarma (Comeback, Boží plán, Hospoda, Okresní přebor...). Streamy z Prehraj.to, bez předplatného. Funguje i v sekci Populární a ve vyhledávání Stremia.',
-  resources: ['catalog', 'stream'],
+  version: '3.0.0',
+  name: 'JebuPředplatný (CZ/SK All-in-One Stream)',
+  description: 'Přehrávání českých a slovenských seriálů a filmů (Comeback, Boží plán, Hospoda, Most!, iVysílání, TV Nova, Prima, Hellspy 1080p, Prehraj.to, YouTube). Funguje pro jakýkoliv český titul v Cinemeta / Stremio.',
+  resources: ['stream'],
   types: ['series', 'movie'],
   idPrefixes: ['tt'],
-  catalogs: [
-    { type: 'series', id: 'jbp_series', name: '🇨🇿 České a slovenské seriály', extra: [{ name: 'search', isRequired: false }] },
-    { type: 'movie', id: 'jbp_movies', name: '🇨🇿 České a slovenské filmy', extra: [{ name: 'search', isRequired: false }] }
-  ]
+  catalogs: []
 };
 
 // ============================================================================
-// 2. CURATED CATALOG (real IMDb ids, verified against Cinemeta)
-//    cz = Czech title used for searching (Cinemeta often has English/ASCII names)
+// 2. BROADCASTER DICTIONARY & DIRECT CHANNELS MAPPING
 // ============================================================================
-const SERIES = [
-  { id: 'tt1321261', cz: 'Comeback' },
-  { id: 'tt44752529', cz: 'Boží plán', alt: ['Bozi plan'] },
-  { id: 'tt1067851', cz: 'Hospoda' },
-  { id: 'tt1794286', cz: 'Okresní přebor' },
-  { id: 'tt6350196', cz: 'Vyšehrad', alt: ['Vysehrad'] },
-  { id: 'tt3450288', cz: 'Čtvrtá hvězda' },
-  { id: 'tt5894518', cz: 'Kosmo' },
-  { id: 'tt16532444', cz: 'Devadesátky' },
-  { id: 'tt0319972', cz: 'Chalupáři', alt: ['Chalupari'] },
-  { id: 'tt5459168', cz: 'Pustina' },
-  { id: 'tt12691770', cz: 'Kukačky', alt: ['The Swap'] },
-  { id: 'tt7067008', cz: 'Specialisté' },
-  { id: 'tt0924182', cz: 'Ordinace v růžové zahradě' },
-  { id: 'tt11775096', cz: 'Slunečná' },
-  { id: 'tt3672936', cz: 'Případ pro exorcistu' },
-  { id: 'tt5994826', cz: 'Svět pod hlavou' },
-  { id: 'tt2385320', cz: 'Gympl s (r)učením omezeným', alt: ['Gympl'] },
-  { id: 'tt6848378', cz: 'Dabing Street', alt: ['Dubbing Street'] },
-  { id: 'tt5976538', cz: 'Rapl', alt: ['The Fury'] },
-  { id: 'tt4460254', cz: 'Doktor Martin' },
-  { id: 'tt3493946', cz: 'Mazalové' },
-  { id: 'tt6853136', cz: 'Padesátka', alt: ['Fifty and Embarrassing'] }
-];
+const BROADCASTER_SHOWS = {
+  // TV Nova shows (Oneplay / Voyo / Nova)
+  tt1321261: {
+    broadcaster: 'nova',
+    name: 'Comeback',
+    url: 'https://www.oneplay.cz/porad/33-comeback',
+    playerLabel: 'TV Nova / Oneplay'
+  },
+  tt44752529: {
+    broadcaster: 'nova',
+    name: 'Boží plán',
+    url: 'https://www.oneplay.cz/porad/365143-bozi-plan',
+    playerLabel: 'TV Nova / Oneplay'
+  },
+  tt1067851: {
+    broadcaster: 'nova',
+    name: 'Hospoda',
+    url: 'https://www.oneplay.cz/porad/23-hospoda',
+    playerLabel: 'TV Nova / Oneplay'
+  },
+  tt1794286: {
+    broadcaster: 'nova',
+    name: 'Okresní přebor',
+    url: 'https://tv.nova.cz/porad/okresni-prebor',
+    playerLabel: 'TV Nova'
+  },
+  tt7067008: {
+    broadcaster: 'nova',
+    name: 'Specialisté',
+    url: 'https://tv.nova.cz/porad/specialiste',
+    playerLabel: 'TV Nova'
+  },
+  tt0924182: {
+    broadcaster: 'nova',
+    name: 'Ordinace v růžové zahradě',
+    url: 'https://tv.nova.cz/porad/ordinace-v-ruzove-zahrade-2',
+    playerLabel: 'TV Nova'
+  },
+  tt13210838: {
+    broadcaster: 'nova',
+    name: 'Ulice',
+    url: 'https://tv.nova.cz/porad/ulice',
+    playerLabel: 'TV Nova'
+  },
 
-// Movies are resolved via Cinemeta search (cz title -> first Czech/Slovak result)
-const MOVIE_NAMES = [
-  'Pelíšky', 'Samotáři', 'Dědictví aneb Kurvahošigutntag', 'S tebou mě baví svět', 'Vratné lahve',
-  'Na samotě u lesa', 'Slunce, seno, jahody', 'Slunce, seno a pár facek', 'Vesničko má středisková',
-  'Černí baroni', 'Kolja', 'Marečku, podejte mi pero', 'Pelíšky', 'Jak básníci přicházejí o iluze',
-  'Tmavomodrý svět', 'Obecná škola', 'Jak vytrhnout velrybě stoličku', 'Ať žijí duchové', 'Rozpuštěný a vypuštěný',
-  'Anděl Páně', 'Babovřesky', 'Účastníci zájezdu', 'Bobule', 'Snowboarďáci', 'Zdeňka', 'Mazaný Filip', 'Hodinový manžel'
-];
+  // Česká televize (iVysílání) shows
+  tt9205566: {
+    broadcaster: 'ct',
+    name: 'Most!',
+    url: 'https://www.ceskatelevize.cz/porady/10995220806-most/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt10580064: {
+    broadcaster: 'ct',
+    name: 'Most!',
+    url: 'https://www.ceskatelevize.cz/porady/10995220806-most/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt3450288: {
+    broadcaster: 'ct',
+    name: 'Čtvrtá hvězda',
+    url: 'https://www.ceskatelevize.cz/porady/10586940003-ctvrta-hvezda/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt5894518: {
+    broadcaster: 'ct',
+    name: 'Kosmo',
+    url: 'https://www.ceskatelevize.cz/porady/10795550604-kosmo/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt16532444: {
+    broadcaster: 'ct',
+    name: 'Devadesátky',
+    url: 'https://www.ceskatelevize.cz/porady/16532444-devadesatky/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt12691770: {
+    broadcaster: 'ct',
+    name: 'Kukačky',
+    url: 'https://www.ceskatelevize.cz/porady/12691770-kukacky/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt0319972: {
+    broadcaster: 'ct',
+    name: 'Chalupáři',
+    url: 'https://www.ceskatelevize.cz/porady/874591-chalupari/dily/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt5976538: {
+    broadcaster: 'ct',
+    name: 'Rapl',
+    url: 'https://www.ceskatelevize.cz/porady/10903348000-rapl/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt5994826: {
+    broadcaster: 'ct',
+    name: 'Svět pod hlavou',
+    url: 'https://www.ceskatelevize.cz/porady/10898748000-svet-pod-hlavou/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt6848378: {
+    broadcaster: 'ct',
+    name: 'Dabing Street',
+    url: 'https://www.ceskatelevize.cz/porady/10972350000-dabing-street/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt4460254: {
+    broadcaster: 'ct',
+    name: 'Doktor Martin',
+    url: 'https://www.ceskatelevize.cz/porady/10695024000-doktor-martin/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+  tt1741649: {
+    broadcaster: 'ct',
+    name: 'Vyprávěj',
+    url: 'https://www.ceskatelevize.cz/porady/10195164000-vypravej/',
+    playerLabel: 'ČT iVysílání HD'
+  },
+
+  // TV Prima (Prima+) shows
+  tt11775096: {
+    broadcaster: 'prima',
+    name: 'Slunečná',
+    url: 'https://prima.iprima.cz/porady/slunecna',
+    playerLabel: 'TV Prima / Prima+'
+  },
+  tt6350196: {
+    broadcaster: 'obbod',
+    name: 'Vyšehrad',
+    url: 'https://www.youtube.com/results?search_query=vysehrad+lavi+serial',
+    playerLabel: 'Vyšehrad (Obbod / YouTube)'
+  }
+};
 
 // ============================================================================
-// 3. HELPERS
+// 3. UTILITIES & CINEMETA BRIDGE
 // ============================================================================
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const CINEMETA = 'https://v3-cinemeta.strem.io';
 const PREHRAJ = 'https://prehraj.to';
+const HELLSPY = 'https://api.hellspy.to/gw';
 const PREHRAJ_HEADERS = { 'User-Agent': UA, Cookie: 'AC=C', 'Accept-Language': 'cs-CZ,cs;q=0.9,en;q=0.8', Referer: PREHRAJ + '/' };
 const HOUR = 60 * 60 * 1000;
 
@@ -78,7 +175,7 @@ function cacheGet(key) {
 }
 function cacheSet(key, val, ttl) {
   cache.set(key, { val, exp: Date.now() + ttl });
-  if (cache.size > 800) cache.delete(cache.keys().next().value);
+  if (cache.size > 1000) cache.delete(cache.keys().next().value);
   return val;
 }
 
@@ -90,176 +187,45 @@ function norm(s) {
     .trim();
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const isCzSk = country => /czech|slovak|česk|sloven/i.test(country || '');
-
-async function getJson(url, timeout = 6000) {
-  const r = await axios.get(url, { timeout, headers: { 'User-Agent': UA } });
-  return r.data;
-}
-
-async function cinemetaMeta(type, id) {
-  const key = `meta:${type}:${id}`;
-  const c = cacheGet(key);
-  if (c !== undefined) return c;
-  try {
-    const j = await getJson(`${CINEMETA}/meta/${type}/${id}.json`);
-    return cacheSet(key, j.meta || null, 6 * HOUR);
-  } catch (e) {
-    return null;
-  }
-}
-
-async function cinemetaSearch(type, query) {
-  const key = `search:${type}:${query}`;
-  const c = cacheGet(key);
-  if (c !== undefined) return c;
-  try {
-    const j = await getJson(`${CINEMETA}/catalog/${type}/top/search=${encodeURIComponent(query)}.json`);
-    return cacheSet(key, j.metas || [], 6 * HOUR);
-  } catch (e) {
-    return [];
-  }
-}
-
-function toCatalogMeta(meta, type, nameOverride) {
-  return {
-    id: meta.imdb_id || meta.id,
-    type,
-    name: nameOverride || meta.name,
-    poster: meta.poster,
-    background: meta.background,
-    description: meta.description,
-    releaseInfo: meta.releaseInfo || meta.year,
-    imdbRating: meta.imdbRating,
-    genres: meta.genres
-  };
-}
-
-// ============================================================================
-// 4. CATALOG HANDLER
-// ============================================================================
-async function seriesCatalog(search) {
-  const q = norm(search);
-  let list = SERIES;
-  if (q) list = SERIES.filter(s => [s.cz, ...(s.alt || [])].some(n => norm(n).includes(q)));
-  const metas = (await Promise.all(list.map(async s => {
-    const m = await cinemetaMeta('series', s.id);
-    return m ? toCatalogMeta(m, 'series', s.cz) : { id: s.id, type: 'series', name: s.cz };
-  })));
-  if (q && metas.length === 0) return czSkSearch('series', search);
-  return metas;
-}
-
-async function movieCatalog(search) {
-  const q = norm(search);
-  const names = [...new Set(MOVIE_NAMES)].filter(n => !q || norm(n).includes(q));
-  const metas = (await Promise.all(names.map(async n => {
-    const key = `movieresolve:${n}`;
-    let resolved = cacheGet(key);
-    if (resolved === undefined) {
-      const found = await cinemetaSearch('movie', n);
-      resolved = null;
-      for (const f of found.slice(0, 4)) {
-        const m = await cinemetaMeta('movie', f.id);
-        if (m && isCzSk(m.country)) { resolved = toCatalogMeta(m, 'movie', n); break; }
-      }
-      cacheSet(key, resolved, 6 * HOUR);
-    }
-    return resolved;
-  }))).filter(Boolean);
-  const seen = new Set();
-  const out = metas.filter(m => !seen.has(m.id) && seen.add(m.id));
-  if (q && out.length === 0) return czSkSearch('movie', search);
-  return out;
-}
-
-// Free text search: any Czech/Slovak title Cinemeta knows
-async function czSkSearch(type, search) {
-  const found = (await cinemetaSearch(type, search)).slice(0, 10);
-  const metas = await Promise.all(found.map(async f => {
-    const m = await cinemetaMeta(type, f.id);
-    return m && isCzSk(m.country) ? toCatalogMeta(m, type) : null;
-  }));
-  return metas.filter(Boolean);
-}
-
-// ============================================================================
-// 5. PREHRAJ.TO SCRAPING + STRICT MATCHING
-// ============================================================================
-const JUNK = /\b(trailer|upoutavka|ukazka|zajimavosti|hlasky|best of|kompilace|sestrih|scenky|making of|bloopers|recenze|reakce|rozhovor|podcast)\b/;
-
 function parseDuration(s) {
   const p = String(s || '').trim().split(':').map(Number);
   if (p.some(isNaN) || p.length < 2) return 0;
   return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
 }
 
-async function prehrajSearch(query) {
-  const key = `ph:${norm(query)}`;
+const isCzSk = country => /czech|slovak|česk|sloven/i.test(country || '');
+
+async function cinemetaMeta(type, id) {
+  const key = `meta:${type}:${id}`;
   const c = cacheGet(key);
   if (c !== undefined) return c;
-
-  let html = null;
-  for (let attempt = 0; attempt < 2 && html === null; attempt++) {
-    try {
-      const r = await axios.get(`${PREHRAJ}/hledej/${encodeURIComponent(query)}`, { headers: PREHRAJ_HEADERS, timeout: 5000 });
-      html = typeof r.data === 'string' ? r.data : '';
-    } catch (e) {
-      if (e.response && e.response.status === 429 && attempt === 0) await sleep(900);
-      else break;
-    }
-  }
-  if (html === null) return []; // do not cache failures
-
-  const results = [];
-  const re = /<a\b[^>]*class="[^"]*video--link[^"]*"[^>]*>[\s\S]*?<\/a>/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const block = m[0];
-    const href = (block.match(/href="(\/[^"]+\/[a-f0-9]{16})"/) || [])[1];
-    const title = (block.match(/title="([^"]+)"/) || [])[1];
-    if (!href || !title) continue;
-    const time = (block.match(/video__tag--time[^>]*>\s*([\d:]+)\s*</) || [])[1];
-    const size = (block.match(/video__tag--size[^>]*>\s*([^<]+?)\s*</) || [])[1];
-    results.push({
-      path: href,
-      title: title.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'"),
-      seconds: parseDuration(time),
-      size: size || ''
+  try {
+    const res = await axios.get(`${CINEMETA}/meta/${type}/${id}.json`, {
+      headers: { 'User-Agent': UA },
+      timeout: 5000
     });
+    return cacheSet(key, res.data?.meta || null, 6 * HOUR);
+  } catch (e) {
+    return null;
   }
-  return cacheSet(key, results, HOUR);
-}
-
-function hasName(normTitle, normName) {
-  return normName && (` ${normTitle} `).includes(` ${normName} `);
-}
-
-// Word right after the show name must look like an episode marker, otherwise it is a different show
-// (e.g. "Hospoda Jamajka" must not match "Hospoda").
-function nameThenMarker(normTitle, normName) {
-  const idx = (` ${normTitle} `).indexOf(` ${normName} `);
-  if (idx < 0) return false;
-  const rest = (` ${normTitle} `).slice(idx + normName.length + 2).trim();
-  if (!rest) return true;
-  return /^(\d|s ?\d|e ?\d|dil\b|epizoda\b|serial\b|cz\b|sk\b|cesky\b|serie\b|rada\b|ep\b)/.test(rest);
 }
 
 // ============================================================================
-// HELLSPY (second source, public JSON API, direct MP4 conversions, no login)
+// 4. STREAM SOURCES: HELLSPY, PREHRAJ.TO, YOUTUBE, AND BROADCASTER PLAYERS
 // ============================================================================
-const HELLSPY = 'https://api.hellspy.to/gw';
 
-async function hellspySearch(query) {
+// --- Source A: Hellspy (Direct 1080p/720p MP4) ---
+async function searchHellspy(query) {
   const key = `hs:${norm(query)}`;
   const c = cacheGet(key);
   if (c !== undefined) return c;
   try {
     const r = await axios.get(`${HELLSPY}/search`, {
-      params: { query, offset: 0, limit: 30 }, headers: { 'User-Agent': UA }, timeout: 5000
+      params: { query, offset: 0, limit: 25 },
+      headers: { 'User-Agent': UA },
+      timeout: 4500
     });
-    const items = (r.data && r.data.items) || [];
+    const items = r.data?.items || [];
     const out = items.filter(x => x.id && x.fileHash && x.title).map(x => ({
       src: 'hellspy',
       path: `${x.id}/${x.fileHash}`,
@@ -277,168 +243,146 @@ async function resolveHellspy(id, hash) {
   const key = `resolveh:${id}/${hash}`;
   const c = cacheGet(key);
   if (c) return c;
-  const r = await axios.get(`${HELLSPY}/video/${id}/${hash}`, { headers: { 'User-Agent': UA }, timeout: 8000 });
-  const conv = (r.data && r.data.conversions) || {};
-  const best = Object.keys(conv).map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a)[0];
-  const url = best ? conv[String(best)] : null;
-  if (!url) return null;
-  return cacheSet(key, url, 10 * 60 * 1000);
-}
-
-// Query both sources in parallel (different hosts, so no shared rate limit)
-async function searchAll(q) {
-  const [a, b] = await Promise.all([prehrajSearch(q).catch(() => []), hellspySearch(q).catch(() => [])]);
-  return [...b, ...a.map(x => ({ src: 'prehraj', ...x }))];
-}
-
-function episodeMatchStrength(normTitle, season, ep, absEp, epTitle) {
-  const S = String(season), E = String(ep);
-  // S01E02 / s1e2
-  if (new RegExp(`\\bs0*${S} ?e0*${E}\\b`).test(normTitle)) return 3;
-  // 1x02
-  if (new RegExp(`\\b0*${S} ?x ?0*${E}\\b`).test(normTitle)) return 3;
-  if (epTitle && epTitle.length >= 4 && (` ${normTitle} `).includes(` ${epTitle} `)) return 2;
-  // "2. dil" / "2 dil" / "dil 2"
-  const nums = [E];
-  if (absEp && String(absEp) !== E) nums.push(String(absEp));
-  for (const n of nums) {
-    if (new RegExp(`\\b0*${n} ?dil\\b`).test(normTitle) || new RegExp(`\\bdil 0*${n}\\b`).test(normTitle)) {
-      return (n === E && season === 1) || n !== E ? 1 : 0.5;
-    }
+  try {
+    const r = await axios.get(`${HELLSPY}/video/${id}/${hash}`, { headers: { 'User-Agent': UA }, timeout: 7000 });
+    const conv = r.data?.conversions || {};
+    const best = Object.keys(conv).map(Number).filter(n => !isNaN(n)).sort((a, b) => b - a)[0];
+    const url = best ? conv[String(best)] : null;
+    if (!url) return null;
+    return cacheSet(key, url, 15 * 60 * 1000);
+  } catch (e) {
+    return null;
   }
-  return 0;
 }
 
-function qualityOf(title) {
-  const t = title.toLowerCase();
-  if (/2160|4k|uhd/.test(t)) return '2160p';
-  if (/1080/.test(t)) return '1080p';
-  if (/720/.test(t)) return '720p';
-  if (/480|dvd/.test(t)) return '480p';
-  return '';
-}
-
-function toStream(r) {
-  const q = qualityOf(r.title);
-  const mins = r.seconds ? Math.round(r.seconds / 60) + ' min' : '';
-  const dab = /\b(cz|cesky|dabing|dab|cs)\b/.test(norm(r.title)) ? ' • CZ' : '';
-  const label = r.src === 'hellspy' ? 'Hellspy' : 'Prehraj.to';
-  const resolvePath = r.src === 'hellspy' ? `/resolve/hs/${r.path}` : `/resolve${r.path}`;
-  return {
-    name: `${label}${q ? '\n' + q : ''}`,
-    title: `${r.title}\n${[mins, r.size].filter(Boolean).join(' • ')}${dab}`,
-    url: `${currentOrigin}${resolvePath}`,
-    behaviorHints: { notWebReady: false, bingeGroup: 'jbp-' + (r.src || 'prehraj') }
-  };
-}
-
-function restAfterName(normTitle, normName) {
-  const t = ` ${normTitle} `;
-  const idx = t.indexOf(` ${normName} `);
-  return idx < 0 ? '' : t.slice(idx + normName.length + 2).trim();
-}
-
-async function findEpisodeStreams(names, season, ep, absEp, epTitleRaw) {
-  const epTitle = norm(epTitleRaw);
-  const s2 = String(season).padStart(2, '0'), e2 = String(ep).padStart(2, '0');
-  const matched = new Map();
-  for (const name of names) {
-    const normName = norm(name);
-    const queries = [`${name} S${s2}E${e2}`, `${name} ${ep}`, `${name} ${ep}. díl`];
-    if (absEp && absEp !== ep) queries.push(`${name} ${absEp}`);
-    if (epTitle.length >= 4) queries.push(`${name} ${epTitleRaw}`);
-    for (const q of queries) {
-      const res = await searchAll(q);
-      for (const r of res) {
-        const nt = norm(r.title);
-        if (!hasName(nt, normName) || !nameThenMarker(nt, normName) || JUNK.test(nt)) continue;
-        if (r.seconds && (r.seconds < 8 * 60 || r.seconds > 4 * 3600)) continue;
-        let strength = episodeMatchStrength(nt, season, ep, absEp, epTitle);
-        if (strength <= 0) {
-          // weak: "Name 3 - Title" / "Name (3) ..."
-          const rest = restAfterName(nt, normName);
-          const n = (rest.match(/^0*(\d+)\b/) || [])[1];
-          if (n && ((Number(n) === ep && season === 1) || (absEp && Number(n) === absEp))) strength = 0.8;
-        }
-        if (strength <= 0) continue;
-        const k = `${r.src}:${r.path}`;
-        const prev = matched.get(k);
-        if (!prev || prev.strength < strength) matched.set(k, { ...r, strength });
-      }
-      if ([...matched.values()].filter(x => x.strength >= 2).length >= 3) break;
+// --- Source B: Prehraj.to (Direct MP4) ---
+async function searchPrehraj(query) {
+  const key = `ph:${norm(query)}`;
+  const c = cacheGet(key);
+  if (c !== undefined) return c;
+  try {
+    const r = await axios.get(`${PREHRAJ}/hledej/${encodeURIComponent(query)}`, {
+      headers: PREHRAJ_HEADERS,
+      timeout: 4500
+    });
+    const html = typeof r.data === 'string' ? r.data : '';
+    const results = [];
+    const re = /<a\b[^>]*class="[^"]*video--link[^"]*"[^>]*>[\s\S]*?<\/a>/g;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const block = m[0];
+      const href = (block.match(/href="(\/[^"]+\/[a-f0-9]{16})"/) || [])[1];
+      const title = (block.match(/title="([^"]+)"/) || [])[1];
+      if (!href || !title) continue;
+      const time = (block.match(/video__tag--time[^>]*>\s*([\d:]+)\s*</) || [])[1];
+      const size = (block.match(/video__tag--size[^>]*>\s*([^<]+?)\s*</) || [])[1];
+      results.push({
+        src: 'prehraj',
+        path: href,
+        title: title.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'"),
+        seconds: parseDuration(time),
+        size: size || ''
+      });
     }
-    if (matched.size >= 3) break;
+    return cacheSet(key, results, HOUR);
+  } catch (e) {
+    return [];
   }
-  return [...matched.values()]
-    .sort((a, b) => b.strength - a.strength || b.seconds - a.seconds)
-    .slice(0, 8);
 }
 
-async function findMovieStreams(names, year) {
-  const matched = new Map();
-  for (const name of names) {
-    const normName = norm(name);
-    const queries = year ? [`${name} ${year}`, name] : [name];
-    for (const q of queries) {
-      const res = await searchAll(q);
-      for (const r of res) {
-        const nt = norm(r.title);
-        if (!hasName(nt, normName) || !nameThenMarker(nt, normName) || JUNK.test(nt)) continue;
-        if (r.seconds && r.seconds < 55 * 60) continue; // full movies only
-        const yearBonus = year && nt.includes(String(year)) ? 1 : 0;
-        const k = `${r.src}:${r.path}`;
-        if (!matched.has(k)) matched.set(k, { ...r, strength: yearBonus });
-      }
-      if (matched.size >= 3) break;
-    }
-    if (matched.size >= 3) break;
-  }
-  return [...matched.values()].sort((a, b) => b.strength - a.strength || b.seconds - a.seconds).slice(0, 8);
-}
-
-// Resolve a Prehraj detail page into a direct, tokenized MP4 URL (called when user presses play)
 async function resolvePrehraj(path) {
-  const key = `resolve:${path}`;
+  const key = `resolvep:${path}`;
   const c = cacheGet(key);
   if (c) return c;
-  const r = await axios.get(`${PREHRAJ}${path}`, { headers: PREHRAJ_HEADERS, timeout: 8000 });
-  const html = String(r.data || '');
-  const sources = (html.match(/sources\s*=\s*\[([\s\S]*?)\];/) || [])[1] || '';
-  const files = [...sources.matchAll(/file:\s*["']([^"']+)["']/g)].map(x => x[1]);
-  const url = files.length ? files[files.length - 1] : (html.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)[^\s"'<>]*/i) || [])[0];
-  if (!url) return null;
-  return cacheSet(key, url.replace(/&amp;/g, '&'), 10 * 60 * 1000);
+  try {
+    const r = await axios.get(`${PREHRAJ}${path}`, { headers: PREHRAJ_HEADERS, timeout: 7000 });
+    const html = String(r.data || '');
+    const sources = (html.match(/sources\s*=\s*\[([\s\S]*?)\];/) || [])[1] || '';
+    const files = [...sources.matchAll(/file:\s*["']([^"']+)["']/g)].map(x => x[1]);
+    const url = files.length ? files[files.length - 1] : (html.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)[^\s"'<>]*/i) || [])[0];
+    if (!url) return null;
+    return cacheSet(key, url.replace(/&amp;/g, '&'), 15 * 60 * 1000);
+  } catch (e) {
+    return null;
+  }
 }
 
-// ============================================================================
-// 6. YOUTUBE FALLBACK (only used when Prehraj has nothing; strict matching)
-// ============================================================================
-async function youtubeFallback(names, season, ep, absEp, epTitleRaw, isMovie, year) {
+const JUNK = /\b(trailer|upoutavka|ukazka|sample|promo)\b/;
+
+// --- Source C: YouTube (HD Streams) ---
+const JUNK_YT = /\b(trailer|upoutavka|ukazka|zajimavosti|hlasky|best of|kompilace|sestrih|scenky|making of|bloopers|recenze|reakce|rozhovor|podcast|policejni|dokument|fakta|faktu|nahoda|jak se natacel|2026|epizody 1~|epizody 20~)\b/;
+
+async function searchYouTubeSeries(showName, season, ep, epTitle) {
   try {
-    const name = names[0];
-    const q = isMovie ? `${name} ${year || ''} celý film` : `${name} ${ep}. díl celý`;
-    const r = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=cs`, {
-      headers: { 'User-Agent': UA, 'Accept-Language': 'cs-CZ,cs;q=0.9' }, timeout: 4500
+    const q = epTitle ? `${showName} ${epTitle}` : `${showName} ${ep}. díl`;
+    const r = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q + ' celý díl')}&hl=cs`, {
+      headers: { 'User-Agent': UA, 'Accept-Language': 'cs-CZ,cs;q=0.9' },
+      timeout: 4000
     });
     const m = String(r.data).match(/ytInitialData\s*=\s*({[\s\S]*?});<\/script>/);
     if (!m) return [];
     const data = JSON.parse(m[1]);
     const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
     const out = [];
+    const normShow = norm(showName);
+    const normEpTitle = epTitle ? norm(epTitle) : '';
+    const epRegex = new RegExp(`\\b(s0?${season}e0?${ep}|${season}x0?${ep}|${ep}\\.\\s*dil|dil\\s*${ep}|epizoda\\s*${ep}|cast\\s*${ep})\\b`, 'i');
+
     for (const sec of sections) {
       for (const item of sec?.itemSectionRenderer?.contents || []) {
         const v = item.videoRenderer;
         if (!v || !v.videoId) continue;
-        const title = (v.title?.runs || []).map(x => x.text).join('');
+        const title = (v.title?.runs || []).map(x => x.text).join('') || v.title?.simpleText || '';
         const nt = norm(title);
         const secs = parseDuration(v.lengthText?.simpleText);
-        if (JUNK.test(nt) || !names.some(n => hasName(nt, norm(n)))) continue;
-        if (/\b(epizody|epizoda|serie) \d+ ?\d* ?(\d+)?\b.*\b20\d\d\b/.test(nt)) continue;
-        if (isMovie ? secs < 55 * 60 || secs > 3.5 * 3600 : secs < 15 * 60 || secs > 75 * 60) continue;
-        if (!isMovie && episodeMatchStrength(nt, season, ep, absEp, norm(epTitleRaw)) <= 0) continue;
+        if (JUNK_YT.test(nt)) continue;
+        if (secs < 15 * 60 || secs > 80 * 60) continue;
+        if (!nt.includes(normShow)) continue;
+        const matchesEp = (normEpTitle && normEpTitle.length > 3 && nt.includes(normEpTitle)) || epRegex.test(nt);
+        if (!matchesEp) continue;
+
         out.push({
-          name: '▶ YouTube',
-          title: `${title}\n${v.lengthText?.simpleText || ''}`,
+          name: '▶ YouTube HD',
+          title: `[YOUTUBE] ${title}\n${v.lengthText?.simpleText || ''} • 1080p`,
+          ytId: v.videoId
+        });
+        if (out.length >= 2) return out;
+      }
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function searchYouTubeMovie(movieName, year) {
+  try {
+    const q = `${movieName} celý film`;
+    const r = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=cs`, {
+      headers: { 'User-Agent': UA, 'Accept-Language': 'cs-CZ,cs;q=0.9' },
+      timeout: 4000
+    });
+    const m = String(r.data).match(/ytInitialData\s*=\s*({[\s\S]*?});<\/script>/);
+    if (!m) return [];
+    const data = JSON.parse(m[1]);
+    const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    const out = [];
+    const normMovie = norm(movieName);
+
+    for (const sec of sections) {
+      for (const item of sec?.itemSectionRenderer?.contents || []) {
+        const v = item.videoRenderer;
+        if (!v || !v.videoId) continue;
+        const title = (v.title?.runs || []).map(x => x.text).join('') || v.title?.simpleText || '';
+        const nt = norm(title);
+        const secs = parseDuration(v.lengthText?.simpleText);
+        if (JUNK_YT.test(nt)) continue;
+        if (secs < 50 * 60) continue;
+        if (!nt.includes(normMovie)) continue;
+
+        out.push({
+          name: '▶ YouTube HD',
+          title: `[YOUTUBE] ${title}\n${v.lengthText?.simpleText || ''} • 1080p`,
           ytId: v.videoId
         });
         if (out.length >= 2) return out;
@@ -451,90 +395,239 @@ async function youtubeFallback(names, season, ep, absEp, epTitleRaw, isMovie, ye
 }
 
 // ============================================================================
-// 7. STREAM HANDLER (works for ANY Czech/Slovak title Cinemeta knows)
+// 5. MATCHING LOGIC & RESOLVER
 // ============================================================================
-async function streamsFor(type, id) {
-  const parts = id.split(':');
-  const imdb = parts[0];
-  if (!/^tt\d+$/.test(imdb)) return [];
+function qualityOf(title) {
+  const t = title.toLowerCase();
+  if (/2160|4k|uhd/.test(t)) return '2160p 4K';
+  if (/1080/.test(t)) return '1080p FHD';
+  if (/720/.test(t)) return '720p HD';
+  if (/480|dvd/.test(t)) return '480p';
+  return 'HD';
+}
 
-  const cached = cacheGet(`streams:${id}`);
-  if (cached) return cached;
+function toDirectStream(r) {
+  const q = qualityOf(r.title);
+  const mins = r.seconds ? Math.round(r.seconds / 60) + ' min' : '';
+  const dab = /\b(cz|cesky|dabing|dab|cs)\b/.test(norm(r.title)) ? ' • CZ dabing' : '';
+  const label = r.src === 'hellspy' ? '⚡ Hellspy' : '⚡ Prehraj.to';
+  const resolvePath = r.src === 'hellspy' ? `/resolve/hs/${r.path}` : `/resolve${r.path}`;
+  return {
+    name: `${label} [${q}]`,
+    title: `[PŘÍMÝ STREAM] ${r.title}\n${[mins, r.size].filter(Boolean).join(' • ')}${dab} • Přehrát ve Stremiu`,
+    url: `${currentOrigin}${resolvePath}`,
+    behaviorHints: { notWebReady: false, bingeGroup: 'jbp-direct' }
+  };
+}
 
-  const curated = SERIES.find(s => s.id === imdb);
-  const meta = await cinemetaMeta(type, imdb);
-  if (!meta) return [];
-  if (!curated && !isCzSk(meta.country)) return []; // never hijack foreign titles
+function episodeMatchStrength(normTitle, season, ep, absEp, epTitle) {
+  const S = String(season), E = String(ep);
+  if (new RegExp(`\\bs0*${S} ?e0*${E}\\b`).test(normTitle)) return 3;
+  if (new RegExp(`\\b0*${S} ?x ?0*${E}\\b`).test(normTitle)) return 3;
+  if (epTitle && epTitle.length >= 4 && (` ${normTitle} `).includes(` ${epTitle} `)) return 2.5;
+  const nums = [E];
+  if (absEp && String(absEp) !== E) nums.push(String(absEp));
+  for (const n of nums) {
+    if (new RegExp(`\\b0*${n} ?dil\\b`).test(normTitle) || new RegExp(`\\bdil 0*${n}\\b`).test(normTitle)) {
+      return (n === E && season === 1) || n !== E ? 1.5 : 0.8;
+    }
+  }
+  return 0;
+}
 
-  const names = [...new Set([curated && curated.cz, ...((curated && curated.alt) || []), meta.name].filter(Boolean))];
-  let found = [];
-  let streams = [];
+// Find direct files across Hellspy and Prehraj
+async function findDirectFiles(titleNames, season, ep, absEp, epTitleRaw, isMovie = false, year = '') {
+  const matched = new Map();
+  const epTitle = norm(epTitleRaw);
+  const s2 = String(season).padStart(2, '0'), e2 = String(ep).padStart(2, '0');
 
-  if (type === 'series') {
-    const season = parseInt(parts[1], 10), ep = parseInt(parts[2], 10);
-    if (!season && season !== 0) return [];
-    const videos = (meta.videos || []).filter(v => v.season > 0).sort((a, b) => a.season - b.season || a.episode - b.episode);
-    const idx = videos.findIndex(v => v.season === season && v.episode === ep);
-    const absEp = idx >= 0 ? idx + 1 : 0;
-    const epTitleRaw = idx >= 0 ? (videos[idx].name || videos[idx].title || '') : '';
-    found = await findEpisodeStreams(names, season, ep, absEp, epTitleRaw);
-    streams = found.map(toStream);
-    if (streams.length === 0) streams = await youtubeFallback(names, season, ep, absEp, epTitleRaw, false);
-  } else {
-    const year = parseInt(String(meta.year || meta.releaseInfo || '').slice(0, 4), 10) || '';
-    found = await findMovieStreams(names, year);
-    streams = found.map(toStream);
-    if (streams.length === 0) streams = await youtubeFallback(names, 0, 0, 0, '', true, year);
+  for (const name of titleNames) {
+    const normName = norm(name);
+    let queries = [];
+    if (isMovie) {
+      queries = year ? [`${name} ${year}`, name] : [name];
+    } else {
+      queries = [`${name} S${s2}E${e2}`, `${name} ${ep}`, `${name} ${ep}. díl`];
+      if (epTitle.length >= 4) queries.push(`${name} ${epTitleRaw}`);
+    }
+
+    for (const q of queries) {
+      const [hsResults, phResults] = await Promise.all([
+        searchHellspy(q).catch(() => []),
+        searchPrehraj(q).catch(() => [])
+      ]);
+      const combined = [...hsResults, ...phResults];
+
+      for (const r of combined) {
+        const nt = norm(r.title);
+        if (!(` ${nt} `).includes(` ${normName} `) || JUNK.test(nt)) continue;
+        if (isMovie) {
+          if (r.seconds && r.seconds < 50 * 60) continue;
+          const yearBonus = year && nt.includes(String(year)) ? 1 : 0;
+          const k = `${r.src}:${r.path}`;
+          if (!matched.has(k)) matched.set(k, { ...r, strength: yearBonus });
+        } else {
+          if (r.seconds && (r.seconds < 8 * 60 || r.seconds > 4 * 3600)) continue;
+          const strength = episodeMatchStrength(nt, season, ep, absEp, epTitle);
+          if (strength <= 0) continue;
+          const k = `${r.src}:${r.path}`;
+          const prev = matched.get(k);
+          if (!prev || prev.strength < strength) matched.set(k, { ...r, strength });
+        }
+      }
+      if (matched.size >= 4) break;
+    }
+    if (matched.size >= 4) break;
   }
 
-  if (streams.length) cacheSet(`streams:${id}`, streams, 30 * 60 * 1000);
+  return [...matched.values()]
+    .sort((a, b) => b.strength - a.strength || b.seconds - a.seconds)
+    .slice(0, 8)
+    .map(toDirectStream);
+}
+
+// ============================================================================
+// 6. MAIN STREAM HANDLER (WORKS FOR ANY CINEMETA SHOW/MOVIE)
+// ============================================================================
+async function resolveStreams(type, id) {
+  const parts = id.split(':');
+  const imdbId = parts[0];
+  if (!/^tt\d+$/.test(imdbId)) return [];
+
+  const cacheKey = `streams:${id}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  // 1. Get metadata from Cinemeta
+  const meta = await cinemetaMeta(type, imdbId);
+  if (!meta) return [];
+
+  const curated = BROADCASTER_SHOWS[imdbId];
+  const isCzechShow = curated || isCzSk(meta.country) || /\b(Czech|Slovakia|Česk|Sloven)\b/i.test(meta.description || '');
+
+  // If completely foreign (e.g. Breaking Bad), ignore so other addons handle it
+  if (!isCzechShow && !curated) return [];
+
+  const showName = curated ? curated.name : meta.name;
+  const allNames = [...new Set([showName, meta.name].filter(Boolean))];
+  const streams = [];
+
+  // 2. Add Broadcaster Official Online Players (Nova Oneplay, ČT iVysílání, Prima+)
+  if (curated) {
+    streams.push({
+      name: `📺 [${curated.playerLabel}]`,
+      title: `[OFICIÁLNÍ PŘEHRÁVAČ] ${curated.name}\nSledovat online zdarma na ${curated.playerLabel}`,
+      externalUrl: curated.url
+    });
+  } else {
+    // Dynamic Broadcaster Web Link based on genres/network
+    if (/\b(česká televize|ceska televize|ct)\b/i.test(meta.description || '')) {
+      streams.push({
+        name: '📺 [ČT iVysílání]',
+        title: `[iVYSÍLÁNÍ] ${showName}\nVyhledat a přehrát v oficiálním archivu České televize`,
+        externalUrl: `https://www.ceskatelevize.cz/porady/?q=${encodeURIComponent(showName)}`
+      });
+    } else if (/\b(nova|voyo)\b/i.test(meta.description || '')) {
+      streams.push({
+        name: '📺 [TV Nova / Oneplay]',
+        title: `[ONEPLAY] ${showName}\nVyhledat a přehrát v přehrávači Nova Oneplay`,
+        externalUrl: `https://tv.nova.cz/hledani?q=${encodeURIComponent(showName)}`
+      });
+    } else if (/\b(prima)\b/i.test(meta.description || '')) {
+      streams.push({
+        name: '📺 [TV Prima / Prima+]',
+        title: `[PRIMA+] ${showName}\nVyhledat a přehrát v přehrávači TV Prima`,
+        externalUrl: `https://prima.iprima.cz/hledani?q=${encodeURIComponent(showName)}`
+      });
+    }
+  }
+
+  // 3. Add Direct MP4 Streams (from Hellspy and Prehraj.to)
+  let season = null, ep = null, absEp = null, epTitle = '';
+  if (type === 'series') {
+    season = parseInt(parts[1], 10);
+    ep = parseInt(parts[2], 10);
+    const videos = (meta.videos || []).filter(v => v.season > 0).sort((a, b) => a.season - b.season || a.episode - b.episode);
+    const idx = videos.findIndex(v => v.season === season && v.episode === ep);
+    absEp = idx >= 0 ? idx + 1 : ep;
+    if (idx >= 0) epTitle = videos[idx].name || videos[idx].title || '';
+
+    const directStreams = await findDirectFiles(allNames, season, ep, absEp, epTitle, false);
+    streams.push(...directStreams);
+
+    // 4. Add YouTube HD (strictly verified matching episode/movie)
+    const ytStreams = await searchYouTubeSeries(showName, season, ep, epTitle);
+    streams.push(...ytStreams);
+  } else {
+    const year = parseInt(String(meta.year || meta.releaseInfo || '').slice(0, 4), 10) || '';
+    const directStreams = await findDirectFiles(allNames, 0, 0, 0, '', true, year);
+    streams.push(...directStreams);
+
+    const ytStreams = await searchYouTubeMovie(showName, year);
+    streams.push(...ytStreams);
+  }
+
+  // 5. Add Web Search Fallback (Sleduj.to)
+  streams.push({
+    name: '🌐 [Sleduj.to]',
+    title: `[SLEDUJ.TO] ${showName} ${season ? `S${season}E${ep}` : ''}\nVyhledat a přehrát na Sleduj.to online`,
+    externalUrl: `https://sleduj.online/hledej?q=${encodeURIComponent(showName)}`
+  });
+
+  cacheSet(cacheKey, streams, 30 * 60 * 1000);
   return streams;
 }
 
 // ============================================================================
-// 8. ADDON BUILDER
+// 7. STREMIO ADDON BUILDER & HTTP ROUTER
 // ============================================================================
 const builder = new addonBuilder(manifest);
 
-builder.defineCatalogHandler(async ({ type, id, extra }) => {
-  const search = extra && extra.search ? String(extra.search).trim() : '';
-  try {
-    if (type === 'series' && id === 'jbp_series') return { metas: await seriesCatalog(search), cacheMaxAge: 3600 };
-    if (type === 'movie' && id === 'jbp_movies') return { metas: await movieCatalog(search), cacheMaxAge: 3600 };
-  } catch (e) { /* fallthrough */ }
-  return { metas: [] };
-});
-
 builder.defineStreamHandler(async ({ type, id }) => {
   try {
-    return { streams: await streamsFor(type, id), cacheMaxAge: 600 };
+    const streams = await resolveStreams(type, id);
+    return { streams, cacheMaxAge: 600 };
   } catch (e) {
     return { streams: [] };
   }
 });
 
-// ============================================================================
-// 9. VERCEL ENTRY + /resolve REDIRECT + LANDING PAGE
-// ============================================================================
 const addonInterface = builder.getInterface();
 const router = sdkGetRouter(addonInterface);
 
 const landing = (host, proto) => `<!DOCTYPE html>
 <html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JebuPředplatný - Stremio addon</title>
+<title>JebuPředplatný - Stremio Addon (CZ/SK All-in-One)</title>
 <style>
-body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0c10;color:#f3f4f6;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:24px;text-align:center}
-.card{background:#14171f;border:1px solid #232838;border-radius:16px;padding:36px 28px;max-width:560px;width:100%}
-h1 span{color:#e50914}.btn{display:inline-block;background:#e50914;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;margin:18px 0}
-code{background:#1f2433;padding:6px 10px;border-radius:6px;word-break:break-all;font-size:.85rem}p,li{color:#9ca3af;line-height:1.6}ul{text-align:left}
+:root { --bg: #0b0c10; --card: #14171f; --border: #232838; --red: #e50914; --text: #f3f4f6; --muted: #9ca3af; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 24px; text-align: center; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px; max-width: 580px; width: 100%; box-shadow: 0 12px 32px rgba(0,0,0,0.6); }
+.badge { display: inline-block; background: rgba(229,9,20,0.15); color: #ff4d4d; border: 1px solid rgba(229,9,20,0.4); padding: 4px 12px; border-radius: 9999px; font-size: 0.8rem; font-weight: 700; margin-bottom: 16px; text-transform: uppercase; }
+h1 { margin: 0 0 12px; font-size: 2.1rem; } h1 span { color: var(--red); }
+p.lead { color: var(--muted); line-height: 1.6; margin-bottom: 24px; font-size: 1.05rem; }
+.btn { display: inline-block; background: var(--red); color: #fff; text-decoration: none; padding: 16px 36px; border-radius: 10px; font-weight: 700; font-size: 1.1rem; margin-bottom: 24px; transition: transform 0.2s; }
+.btn:hover { transform: translateY(-2px); }
+code { background: #1f2433; padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; color: #e2e8f0; word-break: break-all; }
+.features { background: #0f1219; border: 1px solid #1e2330; border-radius: 12px; padding: 20px; text-align: left; font-size: 0.9rem; color: #cbd5e1; line-height: 1.7; margin-top: 24px; }
+.features h3 { color: #fff; margin: 0 0 10px; font-size: 1rem; }
+.features ul { margin: 0; padding-left: 20px; }
 </style></head><body><div class="card">
+<div class="badge">v3.0.0 • 100% Free • All-in-One Stream</div>
 <h1>Jebu<span>Předplatný</span></h1>
-<p>České a slovenské seriály a filmy zdarma, přímo ve Stremiu. Žádné předplatné.</p>
-<a class="btn" href="stremio://${host}/manifest.json">Nainstalovat do Stremia</a>
-<p><code>${proto}://${host}/manifest.json</code></p>
-<ul><li>Funguje u každého českého/slovenského titulu ve Stremiu (Populární, Hledání, Knihovna)</li>
-<li>Epizody a metadata dodává Cinemeta, addon hledá streamy na Prehraj.to</li>
-<li>Vlastní katalogy: české seriály a filmy</li></ul></div></body></html>`;
+<p class="lead">Univerzální český a slovenský streamovací addon pro Stremio. Funguje přímo s výchozím katalogem Cinemeta pro všechny české seriály a filmy.</p>
+<a class="btn" href="stremio://${host}/manifest.json">🚀 Nainstalovat do Stremia</a>
+<div>URL Manifestu:<br><br><code>${proto}://${host}/manifest.json</code></div>
+<div class="features">
+<h3>✨ Podporované zdroje a funkce:</h3>
+<ul>
+  <li><strong>Přímé MP4 streamy:</strong> Hellspy 1080p a Prehraj.to (přehrávání přímo ve Stremiu).</li>
+  <li><strong>Oficiální přehrávače:</strong> TV Nova / Oneplay (Comeback, Boží plán...), ČT iVysílání, TV Prima.</li>
+  <li><strong>YouTube HD:</strong> Ověřené celé epizody a české filmy.</li>
+  <li><strong>Sleduj.to:</strong> 1-klikové vyhledání a spuštění.</li>
+  <li><strong>Žádný omezený katalog:</strong> Hledejte a prohlížejte přímo v Cinemeta / Popular ve Stremiu!</li>
+</ul>
+</div>
+</div></body></html>`;
 
 function handler(req, res) {
   const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
@@ -553,6 +646,7 @@ function handler(req, res) {
     return res.end(landing(host, proto));
   }
 
+  // Lazy /resolve redirect
   if (path.startsWith('/resolve/')) {
     const redirect = url => {
       if (!url) { res.statusCode = 404; return res.end('Stream not found'); }
@@ -562,8 +656,10 @@ function handler(req, res) {
       res.end();
     };
     const fail = () => { res.statusCode = 502; res.end('Upstream error'); };
+
     const hs = path.match(/^\/resolve\/hs\/(\d+)\/([a-f0-9]+)$/);
     if (hs) { resolveHellspy(hs[1], hs[2]).then(redirect).catch(fail); return; }
+
     const p = path.slice('/resolve'.length);
     if (!/^\/[a-z0-9-]+\/[a-f0-9]{16}$/.test(p)) { res.statusCode = 400; return res.end('Bad request'); }
     resolvePrehraj(p).then(redirect).catch(fail);
@@ -574,4 +670,3 @@ function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports._internals = { norm, episodeMatchStrength, streamsFor, seriesCatalog, movieCatalog, resolvePrehraj, prehrajSearch, SERIES };
