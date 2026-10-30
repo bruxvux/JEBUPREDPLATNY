@@ -8,9 +8,9 @@ const axios = require('axios');
 // ============================================================================
 const manifest = {
   id: 'community.jebupredplatny.czsk',
-  version: '3.0.0',
-  name: 'JebuPředplatný (CZ/SK All-in-One Stream)',
-  description: 'Přehrávání českých a slovenských seriálů a filmů (Comeback, Boží plán, Hospoda, Most!, iVysílání, TV Nova, Prima, Hellspy 1080p, Prehraj.to, YouTube). Funguje pro jakýkoliv český titul v Cinemeta / Stremio.',
+  version: '3.1.0',
+  name: 'JebuPředplatný (CZ/SK přímé streamy)',
+  description: 'Přehrávání českých a slovenských seriálů a filmů přímo ve Stremiu bez otevírání webových stránek (Comeback, Hospoda, Čtvrtá hvězda, Most!, Pelíšky...). Využívá přímé MP4 streamy uvnitř Stremia.',
   resources: ['stream'],
   types: ['series', 'movie'],
   idPrefixes: ['tt'],
@@ -307,6 +307,60 @@ async function resolvePrehraj(path) {
   }
 }
 
+// --- Source C: Čeknito.cz (Direct MP4 Streams) ---
+const CEKNITO = 'https://www.ceknito.cz';
+
+async function searchCeknito(query) {
+  const key = `ck:${norm(query)}`;
+  const c = cacheGet(key);
+  if (c !== undefined) return c;
+  try {
+    const url = `${CEKNITO}/vyhladavanie?q=${encodeURIComponent(query)}`;
+    const r = await axios.get(url, { headers: { 'User-Agent': UA }, timeout: 4500 });
+    const regex = /<a[^>]+href="(\/video\/(\d+))"[^>]*>([\s\S]*?)<\/a>/gi;
+    const items = [];
+    const seen = new Set();
+    let m;
+    while ((m = regex.exec(r.data)) !== null) {
+      const id = m[2];
+      const title = m[3].replace(/<[^>]+>/g, '').trim();
+      if (id && title && !seen.has(id)) {
+        seen.add(id);
+        items.push({
+          src: 'ceknito',
+          path: id,
+          title: title.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'"),
+          seconds: 0,
+          size: ''
+        });
+      }
+    }
+    return cacheSet(key, items, HOUR);
+  } catch (e) {
+    return [];
+  }
+}
+
+async function resolveCeknito(id) {
+  const key = `resolveck:${id}`;
+  const c = cacheGet(key);
+  if (c) return c;
+  try {
+    const pageUrl = `${CEKNITO}/video/${id}`;
+    const r = await axios.get(pageUrl, { headers: { 'User-Agent': UA }, timeout: 6000 });
+    const fidMatch = r.data.match(/var\s+videoFID\s*=\s*['"]([^'"]+)['"]/);
+    if (!fidMatch) return null;
+    const fid = fidMatch[1];
+    const xmlUrl = `${CEKNITO}/xml/video.xml?fid=${encodeURIComponent(fid)}`;
+    const xr = await axios.get(xmlUrl, { headers: { 'User-Agent': UA }, timeout: 6000 });
+    const srcMatch = xr.data.match(/<source[^>]+url="([^"]+)"/);
+    if (!srcMatch || !srcMatch[1]) return null;
+    return cacheSet(key, srcMatch[1], 30 * 60 * 1000);
+  } catch (e) {
+    return null;
+  }
+}
+
 const JUNK = /\b(trailer|upoutavka|ukazka|sample|promo)\b/;
 
 // --- Source C: YouTube (HD Streams) ---
@@ -403,6 +457,8 @@ function qualityOf(title) {
   if (/1080/.test(t)) return '1080p FHD';
   if (/720/.test(t)) return '720p HD';
   if (/480|dvd/.test(t)) return '480p';
+  if (/360/.test(t)) return '360p';
+  if (/240/.test(t)) return '240p';
   return 'HD';
 }
 
@@ -410,11 +466,13 @@ function toDirectStream(r) {
   const q = qualityOf(r.title);
   const mins = r.seconds ? Math.round(r.seconds / 60) + ' min' : '';
   const dab = /\b(cz|cesky|dabing|dab|cs)\b/.test(norm(r.title)) ? ' • CZ dabing' : '';
-  const label = r.src === 'hellspy' ? '⚡ Hellspy' : '⚡ Prehraj.to';
-  const resolvePath = r.src === 'hellspy' ? `/resolve/hs/${r.path}` : `/resolve${r.path}`;
+  const label = r.src === 'hellspy' ? '⚡ Hellspy' : (r.src === 'ceknito' ? '⚡ Čeknito' : '⚡ Prehraj.to');
+  const resolvePath = r.src === 'hellspy'
+    ? `/resolve/hs/${r.path}`
+    : (r.src === 'ceknito' ? `/resolve/ck/${r.path}` : `/resolve${r.path}`);
   return {
     name: `${label} [${q}]`,
-    title: `[PŘÍMÝ STREAM] ${r.title}\n${[mins, r.size].filter(Boolean).join(' • ')}${dab} • Přehrát ve Stremiu`,
+    title: `[PŘÍMÝ STREAM] ${r.title}\n${[mins, r.size].filter(Boolean).join(' • ')}${dab}`,
     url: `${currentOrigin}${resolvePath}`,
     behaviorHints: { notWebReady: false, bingeGroup: 'jbp-direct' }
   };
@@ -424,7 +482,7 @@ function episodeMatchStrength(normTitle, season, ep, absEp, epTitle) {
   const S = String(season), E = String(ep);
   if (new RegExp(`\\bs0*${S} ?e0*${E}\\b`).test(normTitle)) return 3;
   if (new RegExp(`\\b0*${S} ?x ?0*${E}\\b`).test(normTitle)) return 3;
-  if (epTitle && epTitle.length >= 4 && (` ${normTitle} `).includes(` ${epTitle} `)) return 2.5;
+  if (epTitle && epTitle.length >= 3 && (` ${normTitle} `).includes(` ${epTitle} `)) return 2.5;
   const nums = [E];
   if (absEp && String(absEp) !== E) nums.push(String(absEp));
   for (const n of nums) {
@@ -435,7 +493,7 @@ function episodeMatchStrength(normTitle, season, ep, absEp, epTitle) {
   return 0;
 }
 
-// Find direct files across Hellspy and Prehraj
+// Find direct files across Hellspy, Prehraj, and Čeknito
 async function findDirectFiles(titleNames, season, ep, absEp, epTitleRaw, isMovie = false, year = '') {
   const matched = new Map();
   const epTitle = norm(epTitleRaw);
@@ -447,20 +505,26 @@ async function findDirectFiles(titleNames, season, ep, absEp, epTitleRaw, isMovi
     if (isMovie) {
       queries = year ? [`${name} ${year}`, name] : [name];
     } else {
-      queries = [`${name} S${s2}E${e2}`, `${name} ${ep}`, `${name} ${ep}. díl`];
-      if (epTitle.length >= 4) queries.push(`${name} ${epTitleRaw}`);
+      queries = [];
+      if (epTitle.length >= 3) queries.push(`${name} ${epTitleRaw}`);
+      queries.push(`${name} S${s2}E${e2}`);
+      queries.push(`${name} ${season}x${e2}`);
+      queries.push(`${name} ${ep}. díl`);
+      queries.push(`${name} ${ep}`);
     }
 
     for (const q of queries) {
-      const [hsResults, phResults] = await Promise.all([
+      const [hsResults, phResults, ckResults] = await Promise.all([
         searchHellspy(q).catch(() => []),
-        searchPrehraj(q).catch(() => [])
+        searchPrehraj(q).catch(() => []),
+        searchCeknito(q).catch(() => [])
       ]);
-      const combined = [...hsResults, ...phResults];
+      const combined = [...hsResults, ...phResults, ...ckResults];
 
       for (const r of combined) {
         const nt = norm(r.title);
-        if (!(` ${nt} `).includes(` ${normName} `) || JUNK.test(nt)) continue;
+        const cleanNt = nt.replace(/[-_.,:;!?()[\]{}]/g, ' ');
+        if (!(` ${cleanNt} `).includes(` ${normName} `) || JUNK.test(nt)) continue;
         if (isMovie) {
           if (r.seconds && r.seconds < 50 * 60) continue;
           const yearBonus = year && nt.includes(String(year)) ? 1 : 0;
@@ -512,37 +576,7 @@ async function resolveStreams(type, id) {
   const allNames = [...new Set([showName, meta.name].filter(Boolean))];
   const streams = [];
 
-  // 2. Add Broadcaster Official Online Players (Nova Oneplay, ČT iVysílání, Prima+)
-  if (curated) {
-    streams.push({
-      name: `📺 [${curated.playerLabel}]`,
-      title: `[OFICIÁLNÍ PŘEHRÁVAČ] ${curated.name}\nSledovat online zdarma na ${curated.playerLabel}`,
-      externalUrl: curated.url
-    });
-  } else {
-    // Dynamic Broadcaster Web Link based on genres/network
-    if (/\b(česká televize|ceska televize|ct)\b/i.test(meta.description || '')) {
-      streams.push({
-        name: '📺 [ČT iVysílání]',
-        title: `[iVYSÍLÁNÍ] ${showName}\nVyhledat a přehrát v oficiálním archivu České televize`,
-        externalUrl: `https://www.ceskatelevize.cz/porady/?q=${encodeURIComponent(showName)}`
-      });
-    } else if (/\b(nova|voyo)\b/i.test(meta.description || '')) {
-      streams.push({
-        name: '📺 [TV Nova / Oneplay]',
-        title: `[ONEPLAY] ${showName}\nVyhledat a přehrát v přehrávači Nova Oneplay`,
-        externalUrl: `https://tv.nova.cz/hledani?q=${encodeURIComponent(showName)}`
-      });
-    } else if (/\b(prima)\b/i.test(meta.description || '')) {
-      streams.push({
-        name: '📺 [TV Prima / Prima+]',
-        title: `[PRIMA+] ${showName}\nVyhledat a přehrát v přehrávači TV Prima`,
-        externalUrl: `https://prima.iprima.cz/hledani?q=${encodeURIComponent(showName)}`
-      });
-    }
-  }
-
-  // 3. Add Direct MP4 Streams (from Hellspy and Prehraj.to)
+  // 2. Add Direct MP4 Streams (Hellspy 1080p FHD, Čeknito, Prehraj.to)
   let season = null, ep = null, absEp = null, epTitle = '';
   if (type === 'series') {
     season = parseInt(parts[1], 10);
@@ -555,7 +589,7 @@ async function resolveStreams(type, id) {
     const directStreams = await findDirectFiles(allNames, season, ep, absEp, epTitle, false);
     streams.push(...directStreams);
 
-    // 4. Add YouTube HD (strictly verified matching episode/movie)
+    // 3. Add YouTube HD (strictly verified matching episode, plays inside Stremio)
     const ytStreams = await searchYouTubeSeries(showName, season, ep, epTitle);
     streams.push(...ytStreams);
   } else {
@@ -566,13 +600,6 @@ async function resolveStreams(type, id) {
     const ytStreams = await searchYouTubeMovie(showName, year);
     streams.push(...ytStreams);
   }
-
-  // 5. Add Web Search Fallback (Sleduj.to)
-  streams.push({
-    name: '🌐 [Sleduj.to]',
-    title: `[SLEDUJ.TO] ${showName} ${season ? `S${season}E${ep}` : ''}\nVyhledat a přehrát na Sleduj.to online`,
-    externalUrl: `https://sleduj.online/hledej?q=${encodeURIComponent(showName)}`
-  });
 
   cacheSet(cacheKey, streams, 30 * 60 * 1000);
   return streams;
@@ -597,7 +624,7 @@ const router = sdkGetRouter(addonInterface);
 
 const landing = (host, proto) => `<!DOCTYPE html>
 <html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JebuPředplatný - Stremio Addon (CZ/SK All-in-One)</title>
+<title>JebuPředplatný - Stremio Addon (CZ/SK přímé streamy)</title>
 <style>
 :root { --bg: #0b0c10; --card: #14171f; --border: #232838; --red: #e50914; --text: #f3f4f6; --muted: #9ca3af; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 24px; text-align: center; }
@@ -612,19 +639,19 @@ code { background: #1f2433; padding: 6px 10px; border-radius: 6px; font-size: 0.
 .features h3 { color: #fff; margin: 0 0 10px; font-size: 1rem; }
 .features ul { margin: 0; padding-left: 20px; }
 </style></head><body><div class="card">
-<div class="badge">v3.0.0 • 100% Free • All-in-One Stream</div>
+<div class="badge">v3.1.0 • 100% Free • Přímé přehrávání ve Stremiu</div>
 <h1>Jebu<span>Předplatný</span></h1>
-<p class="lead">Univerzální český a slovenský streamovací addon pro Stremio. Funguje přímo s výchozím katalogem Cinemeta pro všechny české seriály a filmy.</p>
+<p class="lead">Přehrávání českých a slovenských seriálů a filmů přímo ve vnitřním přehrávači Stremia bez otevírání externího webového prohlížeče.</p>
 <a class="btn" href="stremio://${host}/manifest.json">🚀 Nainstalovat do Stremia</a>
 <div>URL Manifestu:<br><br><code>${proto}://${host}/manifest.json</code></div>
 <div class="features">
-<h3>✨ Podporované zdroje a funkce:</h3>
+<h3>✨ Podporované zdroje (pouze přímé streamy):</h3>
 <ul>
-  <li><strong>Přímé MP4 streamy:</strong> Hellspy 1080p a Prehraj.to (přehrávání přímo ve Stremiu).</li>
-  <li><strong>Oficiální přehrávače:</strong> TV Nova / Oneplay (Comeback, Boží plán...), ČT iVysílání, TV Prima.</li>
-  <li><strong>YouTube HD:</strong> Ověřené celé epizody a české filmy.</li>
-  <li><strong>Sleduj.to:</strong> 1-klikové vyhledání a spuštění.</li>
-  <li><strong>Žádný omezený katalog:</strong> Hledejte a prohlížejte přímo v Cinemeta / Popular ve Stremiu!</li>
+  <li><strong>⚡ Čeknito (přímé MP4):</strong> Comeback (všechny epizody), kultovní seriály a filmy přímo ve Stremiu.</li>
+  <li><strong>⚡ Hellspy (1080p FHD / 720p HD MP4):</strong> Hospoda, Čtvrtá hvězda, Most!, Pelíšky atd.</li>
+  <li><strong>⚡ Prehraj.to (přímé MP4):</strong> Přímé video streamy s výběrem kvality.</li>
+  <li><strong>▶ YouTube HD:</strong> Ověřené celé epizody a filmy integrované do nativního přehrávače Stremia.</li>
+  <li><strong>Žádné webové odkazy:</strong> Žádné přepínání do prohlížeče! Vše hraje uvnitř Stremia.</li>
 </ul>
 </div>
 </div></body></html>`;
@@ -652,6 +679,7 @@ function handler(req, res) {
       if (!url) { res.statusCode = 404; return res.end('Stream not found'); }
       res.statusCode = 302;
       res.setHeader('Location', url);
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 'no-store');
       res.end();
     };
@@ -659,6 +687,9 @@ function handler(req, res) {
 
     const hs = path.match(/^\/resolve\/hs\/(\d+)\/([a-f0-9]+)$/);
     if (hs) { resolveHellspy(hs[1], hs[2]).then(redirect).catch(fail); return; }
+
+    const ck = path.match(/^\/resolve\/ck\/(\d+)$/);
+    if (ck) { resolveCeknito(ck[1]).then(redirect).catch(fail); return; }
 
     const p = path.slice('/resolve'.length);
     if (!/^\/[a-z0-9-]+\/[a-f0-9]{16}$/.test(p)) { res.statusCode = 400; return res.end('Bad request'); }
