@@ -1,16 +1,17 @@
 const { addonBuilder, getRouter: sdkGetRouter } = require('stremio-addon-sdk');
 const axios = require('axios');
+const crypto = require('crypto');
 
 // ============================================================================
-// 1. MANIFEST CONFIGURATION (v3.0.0 - UNIVERSAL CINEMETA STREAM PROVIDER)
+// 1. MANIFEST CONFIGURATION (v3.2.0 - DIRECT IN-PLAYER CZECH STREAMING)
 //    No custom catalogs: Stremio uses Cinemeta's complete catalog for all titles.
-//    Our addon resolves streams for ANY Czech/Slovak series or movie in Stremio.
+//    Integrated MediaDownloader engine for ČT iVysílání 1080p + Čeknito MP4 + Hellspy 1080p.
 // ============================================================================
 const manifest = {
   id: 'community.jebupredplatny.czsk',
-  version: '3.1.0',
+  version: '3.2.0',
   name: 'JebuPředplatný (CZ/SK přímé streamy)',
-  description: 'Přehrávání českých a slovenských seriálů a filmů přímo ve Stremiu bez otevírání webových stránek (Comeback, Hospoda, Čtvrtá hvězda, Most!, Pelíšky...). Využívá přímé MP4 streamy uvnitř Stremia.',
+  description: 'Přehrávání českých a slovenských seriálů a filmů přímo ve Stremiu (Comeback, Most!, Čtvrtá hvězda, Hospoda, Pelíšky...). Integrovaný MediaDownloader engine pro ČT 1080p FHD, Čeknito MP4 a Hellspy 1080p.',
   resources: ['stream'],
   types: ['series', 'movie'],
   idPrefixes: ['tt'],
@@ -66,6 +67,12 @@ const BROADCASTER_SHOWS = {
   },
 
   // Česká televize (iVysílání) shows
+  tt8610916: {
+    broadcaster: 'ct',
+    name: 'Most!',
+    url: 'https://www.ceskatelevize.cz/porady/10995220806-most/',
+    playerLabel: 'ČT iVysílání HD'
+  },
   tt9205566: {
     broadcaster: 'ct',
     name: 'Most!',
@@ -361,6 +368,119 @@ async function resolveCeknito(id) {
   }
 }
 
+// --- Source D: Česká televize iVysílání (MediaDownloader Engine) ---
+const ctShowCache = new Map();
+
+async function getCtShowInfo(showName) {
+  const normKey = norm(showName);
+  if (ctShowCache.has(normKey)) return ctShowCache.get(normKey);
+
+  try {
+    const qSearch = `query SearchShows($limit: PaginationAmount!, $offset: Int!, $search: String!, $onlyPlayable: Boolean) {
+      searchShows(limit: $limit, offset: $offset, keyword: $search, onlyPlayable: $onlyPlayable) {
+        totalCount
+        items {
+          code
+          id
+        }
+      }
+    }`;
+
+    const searchRes = await axios.post('https://api.ceskatelevize.cz/graphql/', {
+      operationName: 'SearchShows',
+      query: qSearch,
+      variables: { limit: 5, offset: 0, search: showName, onlyPlayable: true }
+    }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+
+    const items = searchRes.data?.data?.searchShows?.items || [];
+    if (!items.length) {
+      ctShowCache.set(normKey, null);
+      return null;
+    }
+    const show = items[0];
+
+    const pageUrl = `https://www.ceskatelevize.cz/porady/${show.id}-${show.code}/`;
+    const pageRes = await axios.get(pageUrl, { headers: { 'User-Agent': UA }, timeout: 4000 });
+    const nextMatch = pageRes.data.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+    if (!nextMatch) {
+      ctShowCache.set(normKey, null);
+      return null;
+    }
+    const pageData = JSON.parse(nextMatch[1]);
+    const showObj = pageData.props?.pageProps?.data?.show || pageData.props?.pageProps?.data?.programme;
+    const showIdec = showObj?.idec;
+    const ctTitle = showObj?.title || '';
+    if (!showIdec) {
+      ctShowCache.set(normKey, null);
+      return null;
+    }
+    // Verify title matches to avoid false positives (e.g. Hospoda U bile kocky vs Hospoda)
+    const normCt = norm(ctTitle);
+    if (normCt !== normKey && !normCt.startsWith(normKey + ' ') && !normCt.endsWith(' ' + normKey)) {
+      ctShowCache.set(normKey, null);
+      return null;
+    }
+
+    const info = { showIdec: String(showIdec), code: show.code, id: show.id, title: ctTitle };
+    ctShowCache.set(normKey, info);
+    return info;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function resolveCeskaTelevize(showName, season, ep) {
+  try {
+    const showInfo = await getCtShowInfo(showName);
+    if (!showInfo) return null;
+
+    const cacheKey = `ct_stream:${showInfo.showIdec}:${season}:${ep}`;
+    const cachedStream = cacheGet(cacheKey);
+    if (cachedStream) return cachedStream;
+
+    const qEps = `query GetEpisodes($idec: String!, $limit: PaginationAmount!, $offset: Int!, $orderBy: EpisodeOrderByType!) {
+      episodesPreviewFind(idec: $idec, limit: $limit, offset: $offset, orderBy: $orderBy) {
+        totalCount
+        items {
+          id
+          title
+          playable
+        }
+      }
+    }`;
+
+    const epsRes = await axios.post('https://api.ceskatelevize.cz/graphql/', {
+      operationName: 'GetEpisodes',
+      query: qEps,
+      variables: { idec: showInfo.showIdec, limit: 40, offset: 0, orderBy: 'oldest' }
+    }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+
+    const epItems = epsRes.data?.data?.episodesPreviewFind?.items || [];
+    if (!epItems.length) return null;
+
+    const epIdx = ep > 0 ? ep - 1 : 0;
+    const targetEp = epItems[epIdx];
+    if (!targetEp || !targetEp.playable) return null;
+
+    const deviceId = crypto.randomUUID();
+    const vodUrl = `https://api.ceskatelevize.cz/video/v1/playlist-vod/v1/stream-data/media/external/${targetEp.id}?canPlayDrm=true&quality=web&streamType=hls&deviceId=${deviceId}&origin=ivysilani&client=iVysilaniWeb&clientVersion=0.37.1`;
+
+    const vodRes = await axios.get(vodUrl, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+    const streamUrl = vodRes.data?.streams?.[0]?.url;
+    if (!streamUrl) return null;
+
+    const result = {
+      name: '📺 [ČT iVysílání 1080p FHD]',
+      title: `[iVYSÍLÁNÍ] ${showName} - ${targetEp.title}\nOficiální 1080p FHD stream z České televize • Přehrát ve Stremiu`,
+      url: streamUrl,
+      behaviorHints: { notWebReady: false, bingeGroup: 'ct-ivysilani' }
+    };
+    return cacheSet(cacheKey, result, 2 * HOUR);
+  } catch (e) {
+    return null;
+  }
+}
+
 const JUNK = /\b(trailer|upoutavka|ukazka|sample|promo)\b/;
 
 // --- Source C: YouTube (HD Streams) ---
@@ -576,7 +696,7 @@ async function resolveStreams(type, id) {
   const allNames = [...new Set([showName, meta.name].filter(Boolean))];
   const streams = [];
 
-  // 2. Add Direct MP4 Streams (Hellspy 1080p FHD, Čeknito, Prehraj.to)
+  // 2. Add Direct Streams (ČT iVysílání 1080p, Hellspy 1080p FHD, Čeknito, Prehraj.to)
   let season = null, ep = null, absEp = null, epTitle = '';
   if (type === 'series') {
     season = parseInt(parts[1], 10);
@@ -586,6 +706,13 @@ async function resolveStreams(type, id) {
     absEp = idx >= 0 ? idx + 1 : ep;
     if (idx >= 0) epTitle = videos[idx].name || videos[idx].title || '';
 
+    // 2a. Česká televize iVysílání (MediaDownloader engine - pristine 1080p FHD HLS)
+    if (!curated || curated.broadcaster === 'ct') {
+      const ctStream = await resolveCeskaTelevize(showName, season, ep);
+      if (ctStream) streams.push(ctStream);
+    }
+
+    // 2b. Direct MP4 files (Čeknito for Comeback, Hellspy 1080p, Prehraj.to)
     const directStreams = await findDirectFiles(allNames, season, ep, absEp, epTitle, false);
     streams.push(...directStreams);
 
@@ -594,6 +721,14 @@ async function resolveStreams(type, id) {
     streams.push(...ytStreams);
   } else {
     const year = parseInt(String(meta.year || meta.releaseInfo || '').slice(0, 4), 10) || '';
+
+    // 2a. Česká televize iVysílání
+    if (!curated || curated.broadcaster === 'ct') {
+      const ctStream = await resolveCeskaTelevize(showName, 0, 0);
+      if (ctStream) streams.push(ctStream);
+    }
+
+    // 2b. Direct MP4 files
     const directStreams = await findDirectFiles(allNames, 0, 0, 0, '', true, year);
     streams.push(...directStreams);
 
@@ -639,15 +774,16 @@ code { background: #1f2433; padding: 6px 10px; border-radius: 6px; font-size: 0.
 .features h3 { color: #fff; margin: 0 0 10px; font-size: 1rem; }
 .features ul { margin: 0; padding-left: 20px; }
 </style></head><body><div class="card">
-<div class="badge">v3.1.0 • 100% Free • Přímé přehrávání ve Stremiu</div>
+<div class="badge">v3.2.0 • 100% Free • Přímé přehrávání ve Stremiu</div>
 <h1>Jebu<span>Předplatný</span></h1>
-<p class="lead">Přehrávání českých a slovenských seriálů a filmů přímo ve vnitřním přehrávači Stremia bez otevírání externího webového prohlížeče.</p>
+<p class="lead">Přehrávání českých a slovenských seriálů a filmů přímo ve vnitřním přehrávači Stremia bez otevírání externího webového prohlížeče a bez ručního stahování.</p>
 <a class="btn" href="stremio://${host}/manifest.json">🚀 Nainstalovat do Stremia</a>
 <div>URL Manifestu:<br><br><code>${proto}://${host}/manifest.json</code></div>
 <div class="features">
 <h3>✨ Podporované zdroje (pouze přímé streamy):</h3>
 <ul>
-  <li><strong>⚡ Čeknito (přímé MP4):</strong> Comeback (všechny epizody), kultovní seriály a filmy přímo ve Stremiu.</li>
+  <li><strong>📺 ČT iVysílání (integrovaný MediaDownloader engine):</strong> Oficiální 1080p FHD HLS streamy (Most!, Čtvrtá hvězda, Devadesátky, Kukačky, Chalupáři...).</li>
+  <li><strong>⚡ Čeknito (přímé MP4):</strong> Comeback (všechny epizody), kultovní seriály přímo ve Stremiu.</li>
   <li><strong>⚡ Hellspy (1080p FHD / 720p HD MP4):</strong> Hospoda, Čtvrtá hvězda, Most!, Pelíšky atd.</li>
   <li><strong>⚡ Prehraj.to (přímé MP4):</strong> Přímé video streamy s výběrem kvality.</li>
   <li><strong>▶ YouTube HD:</strong> Ověřené celé epizody a filmy integrované do nativního přehrávače Stremia.</li>
