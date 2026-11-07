@@ -392,11 +392,14 @@ async function getCtShowInfo(showName) {
       }
     }`;
 
+    // Clean showName for search (strip exclamation marks, commas, etc.)
+    const cleanSearch = showName.replace(/[!?,.:;'"-]/g, ' ').replace(/\s+/g, ' ').trim();
+
     const searchRes = await axios.post('https://api.ceskatelevize.cz/graphql/', {
       operationName: 'SearchShows',
       query: qSearch,
-      variables: { limit: 5, offset: 0, search: showName, onlyPlayable: true }
-    }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+      variables: { limit: 5, offset: 0, search: cleanSearch, onlyPlayable: true }
+    }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 3500 });
 
     const items = searchRes.data?.data?.searchShows?.items || [];
     if (!items.length) {
@@ -632,11 +635,10 @@ async function findDirectFiles(titleNames, season, ep, absEp, epTitleRaw, isMovi
       queries = year ? [`${name} ${year}`, name] : [name];
     } else {
       queries = [];
-      if (epTitle.length >= 3) queries.push(`${name} ${epTitleRaw}`);
+      if (epTitle.length >= 3 && !epTitle.startsWith('episode')) queries.push(`${name} ${epTitleRaw}`);
       queries.push(`${name} S${s2}E${e2}`);
-      queries.push(`${name} ${season}x${e2}`);
       queries.push(`${name} ${ep}. díl`);
-      queries.push(`${name} ${ep}`);
+      queries = queries.slice(0, 2);
     }
 
     for (const q of queries) {
@@ -712,37 +714,34 @@ async function resolveStreams(type, id) {
     absEp = idx >= 0 ? idx + 1 : ep;
     if (idx >= 0) epTitle = videos[idx].name || videos[idx].title || '';
 
-    // 2a. Česká televize iVysílání (MediaDownloader engine - pristine 1080p FHD HLS)
-    if (!curated || curated.broadcaster === 'ct') {
-      const ctStream = await resolveCeskaTelevize(showName, season, ep);
-      if (ctStream) streams.push(ctStream);
-    }
+    const ctPromise = (!curated || curated.broadcaster === 'ct')
+      ? resolveCeskaTelevize(showName, season, ep).catch(() => null)
+      : Promise.resolve(null);
+    const directPromise = findDirectFiles(allNames, season, ep, absEp, epTitle, false).catch(() => []);
+    const ytPromise = searchYouTubeSeries(showName, season, ep, epTitle).catch(() => []);
 
-    // 2b. Direct MP4 files (Čeknito for Comeback, Hellspy 1080p, Prehraj.to)
-    const directStreams = await findDirectFiles(allNames, season, ep, absEp, epTitle, false);
+    const [ctStream, directStreams, ytStreams] = await Promise.all([ctPromise, directPromise, ytPromise]);
+    if (ctStream) streams.push(ctStream);
     streams.push(...directStreams);
-
-    // 3. Add YouTube HD (strictly verified matching episode, plays inside Stremio)
-    const ytStreams = await searchYouTubeSeries(showName, season, ep, epTitle);
     streams.push(...ytStreams);
   } else {
     const year = parseInt(String(meta.year || meta.releaseInfo || '').slice(0, 4), 10) || '';
 
-    // 2a. Česká televize iVysílání
-    if (!curated || curated.broadcaster === 'ct') {
-      const ctStream = await resolveCeskaTelevize(showName, 0, 0);
-      if (ctStream) streams.push(ctStream);
-    }
+    const ctPromise = (!curated || curated.broadcaster === 'ct')
+      ? resolveCeskaTelevize(showName, 0, 0).catch(() => null)
+      : Promise.resolve(null);
+    const directPromise = findDirectFiles(allNames, 0, 0, 0, '', true, year).catch(() => []);
+    const ytPromise = searchYouTubeMovie(showName, year).catch(() => []);
 
-    // 2b. Direct MP4 files
-    const directStreams = await findDirectFiles(allNames, 0, 0, 0, '', true, year);
+    const [ctStream, directStreams, ytStreams] = await Promise.all([ctPromise, directPromise, ytPromise]);
+    if (ctStream) streams.push(ctStream);
     streams.push(...directStreams);
-
-    const ytStreams = await searchYouTubeMovie(showName, year);
     streams.push(...ytStreams);
   }
 
-  cacheSet(cacheKey, streams, 30 * 60 * 1000);
+  if (streams.length > 0) {
+    cacheSet(cacheKey, streams, 30 * 60 * 1000);
+  }
   return streams;
 }
 
