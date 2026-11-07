@@ -850,13 +850,39 @@ function handler(req, res) {
         const curated = BROADCASTER_SHOWS[imdbId];
         const showName = curated ? curated.name : meta?.name;
         const ctInfo = showName ? await getCtShowInfo(showName) : null;
-        let ctStream = null;
-        if (showName) {
-          try { ctStream = await resolveCeskaTelevize(showName, s, e); } catch (err) { ctStream = { err: err.message }; }
+        
+        let epsData = null, epsErr = null;
+        let vodData = null, vodErr = null;
+        if (ctInfo?.showIdec) {
+          try {
+            const qEps = `query GetEpisodes($idec: String!, $limit: PaginationAmount!, $offset: Int!, $orderBy: EpisodeOrderByType!) {
+              episodesPreviewFind(idec: $idec, limit: $limit, offset: $offset, orderBy: $orderBy) {
+                totalCount
+                items { id title playable }
+              }
+            }`;
+            const r = await axios.post('https://api.ceskatelevize.cz/graphql/', {
+              operationName: 'GetEpisodes',
+              query: qEps,
+              variables: { idec: ctInfo.showIdec, limit: 40, offset: 0, orderBy: 'oldest' }
+            }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+            epsData = r.data;
+          } catch (err) { epsErr = err.message; }
+
+          const target = epsData?.data?.episodesPreviewFind?.items?.[e > 0 ? e - 1 : 0];
+          if (target?.id) {
+            try {
+              const deviceId = crypto.randomUUID();
+              const vodUrl = `https://api.ceskatelevize.cz/video/v1/playlist-vod/v1/stream-data/media/external/${target.id}?canPlayDrm=true&quality=web&streamType=hls&deviceId=${deviceId}&origin=ivysilani&client=iVysilaniWeb&clientVersion=0.37.1`;
+              const vr = await axios.get(vodUrl, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+              vodData = { status: vr.status, streamsCount: vr.data?.streams?.length, url: vr.data?.streams?.[0]?.url };
+            } catch (err) { vodErr = err.response?.data || err.message; }
+          }
         }
+
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ imdbId, metaName: meta?.name, country: meta?.country, curated, showName, ctInfo, ctStream }));
+        res.end(JSON.stringify({ imdbId, showName, ctInfo, epsData, epsErr, vodData, vodErr }));
       } catch (err) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: err.message, stack: err.stack }));
