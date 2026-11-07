@@ -70,54 +70,63 @@ const BROADCASTER_SHOWS = {
   tt28154033: {
     broadcaster: 'ct',
     name: 'To se vysvětlí, soudruzi!',
+    idec: '222512120080008',
     url: 'https://www.ceskatelevize.cz/porady/15513070519-to-se-vysvetli-soudruzi/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt8610916: {
     broadcaster: 'ct',
     name: 'Most!',
+    idec: '216512120010008',
     url: 'https://www.ceskatelevize.cz/porady/10995220806-most/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt9205566: {
     broadcaster: 'ct',
     name: 'Most!',
+    idec: '216512120010008',
     url: 'https://www.ceskatelevize.cz/porady/10995220806-most/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt10580064: {
     broadcaster: 'ct',
     name: 'Most!',
+    idec: '216512120010008',
     url: 'https://www.ceskatelevize.cz/porady/10995220806-most/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt3450288: {
     broadcaster: 'ct',
     name: 'Čtvrtá hvězda',
+    idec: '21351212001',
     url: 'https://www.ceskatelevize.cz/porady/10586940003-ctvrta-hvezda/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt5894518: {
     broadcaster: 'ct',
     name: 'Kosmo',
+    idec: '215512120050005',
     url: 'https://www.ceskatelevize.cz/porady/10795550604-kosmo/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt16532444: {
     broadcaster: 'ct',
     name: 'Devadesátky',
+    idec: '220512120040006',
     url: 'https://www.ceskatelevize.cz/porady/16532444-devadesatky/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt12691770: {
     broadcaster: 'ct',
     name: 'Kukačky',
+    idec: '219512120070013',
     url: 'https://www.ceskatelevize.cz/porady/12691770-kukacky/',
     playerLabel: 'ČT iVysílání HD'
   },
   tt0319972: {
     broadcaster: 'ct',
     name: 'Chalupáři',
+    idec: '874591',
     url: 'https://www.ceskatelevize.cz/porady/874591-chalupari/dily/',
     playerLabel: 'ČT iVysílání HD'
   },
@@ -403,7 +412,6 @@ async function getCtShowInfo(showName) {
 
     const items = searchRes.data?.data?.searchShows?.items || [];
     if (!items.length) {
-      ctShowCache.set(normKey, null);
       return null;
     }
     const show = items[0];
@@ -412,7 +420,6 @@ async function getCtShowInfo(showName) {
     const pageRes = await axios.get(pageUrl, { headers: { 'User-Agent': UA }, timeout: 4000 });
     const nextMatch = pageRes.data.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
     if (!nextMatch) {
-      ctShowCache.set(normKey, null);
       return null;
     }
     const pageData = JSON.parse(nextMatch[1]);
@@ -420,13 +427,11 @@ async function getCtShowInfo(showName) {
     const showIdec = showObj?.idec;
     const ctTitle = showObj?.title || '';
     if (!showIdec) {
-      ctShowCache.set(normKey, null);
       return null;
     }
     // Verify title matches to avoid false positives (e.g. Hospoda U bile kocky vs Hospoda)
     const normCt = norm(ctTitle);
     if (normCt !== normKey && !normCt.startsWith(normKey + ' ') && !normCt.endsWith(' ' + normKey)) {
-      ctShowCache.set(normKey, null);
       return null;
     }
 
@@ -438,12 +443,12 @@ async function getCtShowInfo(showName) {
   }
 }
 
-async function resolveCeskaTelevize(showName, season, ep) {
+async function resolveCeskaTelevize(showName, season, ep, explicitIdec = null) {
   try {
-    const showInfo = await getCtShowInfo(showName);
-    if (!showInfo) return null;
+    const showIdec = explicitIdec || (await getCtShowInfo(showName))?.showIdec;
+    if (!showIdec) return null;
 
-    const cacheKey = `ct_stream:${showInfo.showIdec}:${season}:${ep}`;
+    const cacheKey = `ct_stream:${showIdec}:${season}:${ep}`;
     const cachedStream = cacheGet(cacheKey);
     if (cachedStream) return cachedStream;
 
@@ -461,8 +466,8 @@ async function resolveCeskaTelevize(showName, season, ep) {
     const epsRes = await axios.post('https://api.ceskatelevize.cz/graphql/', {
       operationName: 'GetEpisodes',
       query: qEps,
-      variables: { idec: showInfo.showIdec, limit: 40, offset: 0, orderBy: 'oldest' }
-    }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+      variables: { idec: String(showIdec), limit: 40, offset: 0, orderBy: 'oldest' }
+    }, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4500 });
 
     const epItems = epsRes.data?.data?.episodesPreviewFind?.items || [];
     if (!epItems.length) return null;
@@ -715,7 +720,7 @@ async function resolveStreams(type, id) {
     if (idx >= 0) epTitle = videos[idx].name || videos[idx].title || '';
 
     const ctPromise = (!curated || curated.broadcaster === 'ct')
-      ? resolveCeskaTelevize(showName, season, ep).catch(() => null)
+      ? resolveCeskaTelevize(showName, season, ep, curated?.idec).catch(() => null)
       : Promise.resolve(null);
     const directPromise = findDirectFiles(allNames, season, ep, absEp, epTitle, false).catch(() => []);
     const ytPromise = searchYouTubeSeries(showName, season, ep, epTitle).catch(() => []);
@@ -728,7 +733,7 @@ async function resolveStreams(type, id) {
     const year = parseInt(String(meta.year || meta.releaseInfo || '').slice(0, 4), 10) || '';
 
     const ctPromise = (!curated || curated.broadcaster === 'ct')
-      ? resolveCeskaTelevize(showName, 0, 0).catch(() => null)
+      ? resolveCeskaTelevize(showName, 0, 0, curated?.idec).catch(() => null)
       : Promise.resolve(null);
     const directPromise = findDirectFiles(allNames, 0, 0, 0, '', true, year).catch(() => []);
     const ytPromise = searchYouTubeMovie(showName, year).catch(() => []);
