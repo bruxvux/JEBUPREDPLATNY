@@ -67,6 +67,12 @@ const BROADCASTER_SHOWS = {
   },
 
   // Česká televize (iVysílání) shows
+  tt28154033: {
+    broadcaster: 'ct',
+    name: 'To se vysvětlí, soudruzi!',
+    url: 'https://www.ceskatelevize.cz/porady/15513070519-to-se-vysvetli-soudruzi/',
+    playerLabel: 'ČT iVysílání HD'
+  },
   tt8610916: {
     broadcaster: 'ct',
     name: 'Most!',
@@ -830,6 +836,33 @@ function handler(req, res) {
     const p = path.slice('/resolve'.length);
     if (!/^\/[a-z0-9-]+\/[a-f0-9]{16}$/.test(p)) { res.statusCode = 400; return res.end('Bad request'); }
     resolvePrehraj(p).then(redirect).catch(fail);
+    return;
+  }
+
+  if (path.startsWith('/debug/')) {
+    const rawId = path.slice('/debug/'.length);
+    (async () => {
+      try {
+        const parts = rawId.split(':');
+        const imdbId = parts[0];
+        const s = parseInt(parts[1] || '1', 10);
+        const e = parseInt(parts[2] || '1', 10);
+        const meta = await cinemetaMeta('series', imdbId);
+        const curated = BROADCASTER_SHOWS[imdbId];
+        const showName = curated ? curated.name : meta?.name;
+        const ctInfo = showName ? await getCtShowInfo(showName) : null;
+        let ctStream = null;
+        if (showName) {
+          try { ctStream = await resolveCeskaTelevize(showName, s, e); } catch (err) { ctStream = { err: err.message }; }
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ imdbId, metaName: meta?.name, country: meta?.country, curated, showName, ctInfo, ctStream }));
+      } catch (err) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message, stack: err.stack }));
+      }
+    })();
     return;
   }
 
