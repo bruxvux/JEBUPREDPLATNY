@@ -443,7 +443,7 @@ async function getCtShowInfo(showName) {
   }
 }
 
-async function resolveCeskaTelevize(showName, season, ep, explicitIdec = null) {
+async function resolveCeskaTelevize(showName, season, ep, explicitIdec = null, clientIp = null) {
   try {
     const showIdec = explicitIdec || (await getCtShowInfo(showName))?.showIdec;
     if (!showIdec) return null;
@@ -479,7 +479,17 @@ async function resolveCeskaTelevize(showName, season, ep, explicitIdec = null) {
     const deviceId = crypto.randomUUID();
     const vodUrl = `https://api.ceskatelevize.cz/video/v1/playlist-vod/v1/stream-data/media/external/${targetEp.id}?canPlayDrm=true&quality=web&streamType=hls&deviceId=${deviceId}&origin=ivysilani&client=iVysilaniWeb&clientVersion=0.37.1`;
 
-    const vodRes = await axios.get(vodUrl, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+    const czIp = clientIp || '89.24.0.1';
+    const vodHeaders = {
+      'User-Agent': UA,
+      'Referer': 'https://www.ceskatelevize.cz/',
+      'X-Forwarded-For': czIp,
+      'X-Real-IP': czIp,
+      'Client-IP': czIp,
+      'True-Client-IP': czIp
+    };
+
+    const vodRes = await axios.get(vodUrl, { headers: vodHeaders, timeout: 4500 });
     const streamUrl = vodRes.data?.streams?.[0]?.url;
     if (!streamUrl) return null;
 
@@ -879,7 +889,18 @@ function handler(req, res) {
             try {
               const deviceId = crypto.randomUUID();
               const vodUrl = `https://api.ceskatelevize.cz/video/v1/playlist-vod/v1/stream-data/media/external/${target.id}?canPlayDrm=true&quality=web&streamType=hls&deviceId=${deviceId}&origin=ivysilani&client=iVysilaniWeb&clientVersion=0.37.1`;
-              const vr = await axios.get(vodUrl, { headers: { 'User-Agent': UA, 'Referer': 'https://www.ceskatelevize.cz/' }, timeout: 4000 });
+              const czIp = '89.24.0.1';
+              const vr = await axios.get(vodUrl, {
+                headers: {
+                  'User-Agent': UA,
+                  'Referer': 'https://www.ceskatelevize.cz/',
+                  'X-Forwarded-For': czIp,
+                  'X-Real-IP': czIp,
+                  'Client-IP': czIp,
+                  'True-Client-IP': czIp
+                },
+                timeout: 4500
+              });
               vodData = { status: vr.status, streamsCount: vr.data?.streams?.length, url: vr.data?.streams?.[0]?.url };
             } catch (err) { vodErr = err.response?.data || err.message; }
           }
