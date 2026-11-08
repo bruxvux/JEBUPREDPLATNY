@@ -906,9 +906,31 @@ function handler(req, res) {
           }
         }
 
+        let hsTest = null, phTest = null;
+        try {
+          const hr = await axios.get(`${HELLSPY}/search`, {
+            params: { query: 'To se vysvetli soudruzi S01E01', offset: 0, limit: 5 },
+            headers: { 'User-Agent': UA },
+            timeout: 3000
+          });
+          hsTest = { status: hr.status, items: hr.data?.items?.length };
+        } catch (err) {
+          hsTest = { error: err.message, status: err.response?.status };
+        }
+
+        try {
+          const pr = await axios.get(`${PREHRAJ}/hledej/test`, {
+            headers: PREHRAJ_HEADERS,
+            timeout: 3000
+          });
+          phTest = { status: pr.status, len: typeof pr.data === 'string' ? pr.data.length : 0 };
+        } catch (err) {
+          phTest = { error: err.message, status: err.response?.status };
+        }
+
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ imdbId, showName, ctInfo, epsData, epsErr, vodData, vodErr }));
+        res.end(JSON.stringify({ imdbId, showName, ctInfo, vodErr, hsTest, phTest, directStreams }));
       } catch (err) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: err.message, stack: err.stack }));
