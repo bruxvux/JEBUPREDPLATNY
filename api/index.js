@@ -942,4 +942,13 @@ function handler(req, res) {
   router(req, res, () => { res.statusCode = 404; res.end('Not found'); });
 }
 
+if (require.main === module) {
+  const http = require('http');
+  const port = process.env.PORT || 7000;
+  http.createServer(handler).listen(port, () => {
+    console.log(`🚀 JebuPředplatný addon běží na portu ${port}`);
+    console.log(`📡 URL manifestu: http://localhost:${port}/manifest.json`);
+  });
+}
+
 module.exports = handler;
